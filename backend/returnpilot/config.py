@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     env: str = Field(default="dev", alias="APP_ENV")
-    git_sha: str = Field(default="dev", alias="GIT_SHA")
+    git_sha: str = Field(default="dev", alias="RENDER_GIT_COMMIT")
 
     # Data stores
     database_url: str = Field(default="postgresql://postgres@127.0.0.1:5433/returnpilot", alias="DATABASE_URL")
@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # Internal services
     mcp_url: str = Field(default="http://127.0.0.1:8765/mcp", alias="MCP_URL")
     mcp_internal_token: str = Field(default="dev-mcp-token", alias="MCP_INTERNAL_TOKEN")
+    mcp_embedded: bool = Field(default=False, alias="MCP_EMBEDDED")
     cron_token: str = Field(default="dev-cron-token", alias="CRON_TOKEN")
 
     # Business rules & demo

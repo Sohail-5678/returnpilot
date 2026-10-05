@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import random
 import time
 import uuid
@@ -15,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+from celery.signals import worker_ready
 from sqlalchemy import select, text, update
 
 from returnpilot.config import get_settings
@@ -207,7 +209,7 @@ def expire_approvals() -> int:
                 select(Approval.id).where(Approval.status == "pending", Approval.expires_at < datetime.now(UTC))
             ).all()
         ]
-    port = int(__import__("os").environ.get("PORT", "10000"))
+    port = int(os.environ.get("WEB_PORT") or os.environ.get("PORT") or "10000")
     for approval_id in ids:
         try:
             httpx.post(
@@ -260,3 +262,12 @@ def retention_cleanup() -> dict[str, int]:
                 ).rowcount  # type: ignore[attr-defined]
     log.info("retention cleanup: %s", out)
     return out
+
+
+@worker_ready.connect
+def _reconcile_on_start(**_: Any) -> None:
+    """Redis is ephemeral in the container: re-send jobs that were queued before a restart."""
+    try:
+        log.info("re-enqueued %s stuck jobs", reconcile_jobs(older_than_s=0))
+    except Exception:  # noqa: BLE001
+        log.exception("job reconcile failed")

@@ -41,6 +41,10 @@ ITEM_WORDS = [
 ]
 YES = re.compile(r"\b(yes|yeah|yep|sure|please do|go ahead|do it|refund me|start (it|the return)|sounds good)\b", re.I)
 REFUND = re.compile(r"\b(refund|money back)\b", re.I)
+REFUND_REQ = re.compile(
+    r"\b(refund me|refund (it|them|please)|want (a|my) refund|give me (a|my) refund|money back|i want (a )?refund)\b",
+    re.I,
+)
 POLICY_Q = re.compile(
     r"\b(policy|how long|how many days|window|final sale|international|gift|electronics|exchange|ship(ping)? back)\b",
     re.I,
@@ -177,7 +181,7 @@ class FakeAgentModel(BaseChatModel):
             )
         injected = AMOUNT.search(user)
         elig = self._last_eligibility(convo)
-        if elig and (YES.search(user) or REFUND.search(user) or injected):
+        if elig and (YES.search(user) or REFUND_REQ.search(user) or injected):
             amount = float(injected.group(1)) if injected else float(elig.get("max_refund") or 0)
             reason = "damaged_item" if _condition(user) == "damaged" else "return_within_window"
             if REFUND.search(user) or injected:
@@ -194,10 +198,11 @@ class FakeAgentModel(BaseChatModel):
         m = ORDER_NO.search(user)
         if m:
             return self._call("get_order", order_id=m.group(1) or m.group(2))
-        if any(w in t for w in ITEM_WORDS) or re.search(r"\b(return|refund|last order|my order|orders?)\b", t):
-            return self._call("list_orders", limit=5)
-        if POLICY_Q.search(t):
+        mentions_item = any(w in t for w in ITEM_WORDS) or re.search(r"\b(last order|my order|orders?)\b", t)
+        if POLICY_Q.search(t) and not mentions_item:
             return self._call("search_policy", query=user[:200])
+        if mentions_item or re.search(r"\b(return|refund)\b", t):
+            return self._call("list_orders", limit=5)
         if re.search(r"\b(hi|hello|hey|thanks|thank you)\b", t):
             return AIMessage(
                 content="Happy to help! I can check orders, explain our return policy, and start returns or refunds. What can I do for you?"

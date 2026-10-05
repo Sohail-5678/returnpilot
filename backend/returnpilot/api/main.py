@@ -24,10 +24,18 @@ from returnpilot.db.session import db_session
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("returnpilot.api")
+for noisy in ("httpx", "mcp", "mcp.server", "mcp.client"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    mcp = None
+    if get_settings().mcp_embedded:
+        from returnpilot.mcp_server.embedded import EmbeddedMCP
+
+        mcp = EmbeddedMCP()
+        await mcp.start()
     await runtime.start()
     try:
         from returnpilot.agent.tools_runtime import mcp_tool_definitions
@@ -37,6 +45,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         log.warning("MCP tool warm-up skipped: %s", exc)
     yield
     await runtime.stop()
+    if mcp:
+        await mcp.stop()
 
 
 app = FastAPI(title="ReturnPilot API", version="1.0.0", lifespan=lifespan, docs_url="/docs", redoc_url=None)
