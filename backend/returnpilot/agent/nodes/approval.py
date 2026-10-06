@@ -32,7 +32,7 @@ def _agent_summary(state: AgentState, action: dict[str, Any]) -> str:
     said = redact_text(last_human_text(state["messages"]))[:220]
     return (
         f"Customer asked for {what} on the {action['item_name']} from order #{action['order_number']} "
-        f'(condition: {action["condition"].replace("_", " ")}). Last message: "{said}"'
+        f"(condition: {action['condition'].replace('_', ' ')}). Their last message: {said}"
     )
 
 

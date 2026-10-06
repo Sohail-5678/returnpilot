@@ -219,7 +219,7 @@ export function createWorkspace(wsId: string): Workspace {
     maya,
     "Rain shell delivery",
     2 * DAY + 3 * HOUR,
-    "Where is my rain shell?",
+    "Can I still return the rain jacket from order #1031?",
     {
       text: `Your **Packable Rain Shell** (order #1057) shipped on ${new Date(now - 3 * DAY).toLocaleDateString("en-US", { month: "short", day: "numeric" })} and is on its way. Carrier estimates delivery within 2–3 business days. Anything else I can help with?`,
       tools: [

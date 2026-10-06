@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · lint, tests, deterministic evals
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env: { POSTGRES_PASSWORD: pw, POSTGRES_DB: returnpilot_test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot_test
+      EVAL_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot_test
+      TEST_REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - name: Install
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Lint
+        working-directory: backend
+        run: uv run ruff check returnpilot scripts && uv run ruff format --check returnpilot scripts
+      - name: Tests (policy engine 100% coverage + integration)
+        working-directory: backend
+        run: |
+          uv run pytest -q --cov=returnpilot.policy.engine --cov=returnpilot.policy.rules --cov-fail-under=100 --cov-report=term-missing:skip-covered
+      - name: Deterministic evals (scripted model, 30 scenarios)
+        run: uv run --project backend python evals/run_evals.py --suite deterministic
+      - name: Dependency audit
+        working-directory: backend
+        run: uv export --frozen --no-dev --no-hashes > /tmp/req.txt && uvx pip-audit -r /tmp/req.txt --progress-spinner off || echo "::warning::pip-audit reported issues"
+
+  web:
+    name: Web · lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v5
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm audit --prod --audit-level high || echo "::warning::pnpm audit reported issues"
+
+  e2e:
+    name: E2E · demo flow in a real browser
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env: { POSTGRES_PASSWORD: pw, POSTGRES_DB: returnpilot }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot
+      REDIS_URL: redis://localhost:6379/0
+      FAKE_LLM: "true"
+      DEMO_MODE: "true"
+      MCP_EMBEDDED: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v5
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
+      - name: Throwaway ES256 key pair
+        run: |
+          openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -out /tmp/jwt.pem
+          openssl ec -in /tmp/jwt.pem -pubout -out /tmp/jwt.pub 2>/dev/null
+          echo "JWT_PUBLIC_KEY=$(base64 -w0 /tmp/jwt.pub)" >> "$GITHUB_ENV"
+      - name: Start backend (API + embedded MCP, Celery worker)
+        working-directory: backend
+        run: |
+          uv sync --frozen
+          uv run python -m returnpilot.db.bootstrap
+          nohup uv run celery -A returnpilot.jobs worker --pool=solo --loglevel=warning > /tmp/worker.log 2>&1 &
+          nohup uv run uvicorn returnpilot.api.main:app --port 10000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:10000/healthz && break; sleep 1; done
+      - name: Start web (production build)
+        working-directory: apps/web
+        run: |
+          pnpm install --frozen-lockfile
+          {
+            echo "BACKEND_URL=http://127.0.0.1:10000"
+            echo "JWT_PRIVATE_KEY=$(base64 -w0 /tmp/jwt.pem)"
+            echo "AUTH_SECRET=$(openssl rand -base64 32)"
+            echo "DEMO_MODE=true"
+            echo "MOCK_BACKEND=false"
+          } > .env.local
+          pnpm build
+          nohup pnpm start --port 3000 > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null localhost:3000 && break; sleep 1; done
+      - name: Playwright
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium && pnpm e2e
+      - name: Logs on failure
+        if: failure()
+        run: tail -n 80 /tmp/api.log /tmp/worker.log /tmp/web.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: apps/web/playwright-report }
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

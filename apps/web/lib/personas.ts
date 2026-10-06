@@ -25,7 +25,7 @@ export const PERSONAS: Record<PersonaKey, Persona> = {
     prompts: [
       "Can I return the boots from my last order?",
       "I want to return the trail boots and get a refund. They're unopened.",
-      "Where is my rain shell?",
+      "Can I still return the rain jacket from order #1031?",
       "Use my usual shipping preference.",
     ],
   },

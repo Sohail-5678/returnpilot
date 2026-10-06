@@ -27,12 +27,18 @@ SELECT count(*) AS runs,
 FROM runs WHERE kind = 'turn' AND created_at > now() - make_interval(days => :d)
 """)
 _PER_DAY = text("""
-SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day, count(*) AS runs,
-       sum(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
-       percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS p50_ms,
-       percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_ms
-FROM runs WHERE kind = 'turn' AND created_at > now() - make_interval(days => :d)
-GROUP BY 1 ORDER BY 1
+WITH days AS (
+  SELECT generate_series(date_trunc('day', now()) - make_interval(days => :d - 1), date_trunc('day', now()), interval '1 day') AS day
+), turns AS (
+  SELECT date_trunc('day', created_at) AS day, total_ms, status FROM runs
+  WHERE kind = 'turn' AND created_at > now() - make_interval(days => :d)
+)
+SELECT to_char(d.day, 'YYYY-MM-DD') AS day, count(t.total_ms) AS runs,
+       coalesce(sum(CASE WHEN t.status = 'error' THEN 1 ELSE 0 END), 0) AS errors,
+       percentile_cont(0.5) WITHIN GROUP (ORDER BY t.total_ms) AS p50_ms,
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY t.total_ms) AS p95_ms
+FROM days d LEFT JOIN turns t ON t.day = d.day
+GROUP BY d.day ORDER BY d.day
 """)
 _ROUTES = text("""
 SELECT coalesce(route, 'unknown') AS route, count(*) AS count FROM runs

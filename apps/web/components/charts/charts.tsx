@@ -146,8 +146,8 @@ export function LatencyChart({ data }: { data: Metrics["latency_per_day"] }) {
               cursor={{ stroke: "var(--chart-1)", strokeOpacity: 0.35, strokeWidth: 1.5 }}
               content={(p) => <ChartTooltip {...(p as TooltipContentProps<number, string>)} labelFormat={shortDay} format={(v) => formatMs(v)} />}
             />
-            <Line type="monotone" dataKey="p50_ms" name="p50" stroke="var(--chart-1)" strokeWidth={2} dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--surface)" }} />
-            <Line type="monotone" dataKey="p95_ms" name="p95" stroke="var(--chart-2)" strokeWidth={2} strokeDasharray="6 4" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--surface)" }} />
+            <Line type="monotone" dataKey="p50_ms" name="p50" stroke="var(--chart-1)" strokeWidth={2} dot={data.length < 4 ? { r: 4, fill: "var(--chart-1)" } : false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--surface)" }} />
+            <Line type="monotone" dataKey="p95_ms" name="p95" stroke="var(--chart-2)" strokeWidth={2} strokeDasharray="6 4" dot={data.length < 4 ? { r: 4, fill: "var(--chart-2)" } : false} activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--surface)" }} />
           </LineChart>
         </ResponsiveContainer>
       </div>

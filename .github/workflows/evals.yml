@@ -1,0 +1,42 @@
+name: Live evals
+
+# Real Groq/Gemini calls against 30 scenarios. Needs repo secrets GROQ_API_KEY (and optionally
+# GEMINI_API_KEY). ~150 LLM requests per run: well inside the free daily limits.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *"
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'Sohail-5678/returnpilot' }}
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env: { POSTGRES_PASSWORD: pw, POSTGRES_DB: returnpilot }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      EVAL_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      EVAL_TURN_DELAY_S: "3"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Skip without keys
+        if: ${{ env.GROQ_API_KEY == '' && env.GEMINI_API_KEY == '' }}
+        run: echo "::notice::Add GROQ_API_KEY as a repository secret to run live evals." && exit 0
+      - uses: astral-sh/setup-uv@v7
+        if: ${{ env.GROQ_API_KEY != '' || env.GEMINI_API_KEY != '' }}
+      - name: Run live evals
+        if: ${{ env.GROQ_API_KEY != '' || env.GEMINI_API_KEY != '' }}
+        run: |
+          (cd backend && uv sync --frozen)
+          uv run --project backend python evals/run_evals.py --suite live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: eval-report, path: evals/reports, if-no-files-found: ignore }

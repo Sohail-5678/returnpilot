@@ -1,0 +1,25 @@
+# Local stack: Postgres (pgvector) + Redis, and optionally the backend container.
+#   docker compose up -d db redis          # just the data stores
+#   docker compose up --build              # everything (backend uses the scripted model)
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: returnpilot }
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "postgres"], interval: 5s, retries: 20 }
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  backend:
+    build: ./backend
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/returnpilot
+      FAKE_LLM: "true"
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      ALLOWED_ORIGINS: http://localhost:3000
+    ports: ["10000:10000"]
+    mem_limit: 512m
+volumes:
+  pgdata:
