@@ -71,6 +71,7 @@ def check_eligibility(
     days = (now - item.delivered_at).days if item.delivered_at else None
     refund_shipping = damaged
     reasons: list[str] = []
+    blockers: list[str] = []  # why it is NOT eligible; listed first so explanations lead with the cause
     rule_ids: list[str] = []
     notes: list[str] = []
     eligible = True
@@ -80,15 +81,15 @@ def check_eligibility(
         eligible = False
         rule_ids.append(R_ORDER_STATUS)
         if item.order_status in ("processing", "cancelled"):
-            reasons.append(f"Order #{item.order_number} is {item.order_status}; it can't be returned or refunded.")
+            blockers.append(f"Order #{item.order_number} is {item.order_status}; it can't be returned or refunded.")
         else:
-            reasons.append(f"Order #{item.order_number} hasn't been delivered yet; returns open after delivery.")
+            blockers.append(f"Order #{item.order_number} hasn't been delivered yet; returns open after delivery.")
     else:
         if days > window:
             eligible = False
             soft_block = True
             rule_ids.append(window_rule)
-            reasons.append(f"Delivered {days} days ago, outside the {window}-day return window.")
+            blockers.append(f"Delivered {days} days ago, outside the {window}-day return window.")
         else:
             rule_ids.append(window_rule)
             reasons.append(f"Delivered {days} days ago, within the {window}-day return window.")
@@ -98,15 +99,15 @@ def check_eligibility(
             eligible = False
             soft_block = True
             if damaged:
-                reasons.append("Final-sale items can't be refunded; a damaged final-sale item can be exchanged.")
+                blockers.append("Final-sale items can't be refunded; a damaged final-sale item can be exchanged.")
             else:
-                reasons.append("Final-sale items can't be returned or refunded.")
+                blockers.append("Final-sale items can't be returned or refunded.")
         elif item.category == "electronics":
             rule_ids.append(R_ELECTRONICS)
             if condition == "opened":
                 eligible = False
                 soft_block = True
-                reasons.append("Opened electronics can only be returned if they are damaged or defective.")
+                blockers.append("Opened electronics can only be returned if they are damaged or defective.")
             elif condition == "unopened":
                 reasons.append("Unopened electronics are returnable.")
                 if item.opened:
@@ -125,6 +126,7 @@ def check_eligibility(
         if not damaged:
             notes.append("Original shipping is not refunded on international orders.")
 
+    reasons = blockers + reasons
     max_refund = item.paid + (item.shipping_share if refund_shipping else Decimal("0.00"))
     return_required = not (damaged and item.paid < NO_RETURN_NEEDED_BELOW)
     if not return_required:

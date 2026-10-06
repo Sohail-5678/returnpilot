@@ -1,0 +1,15 @@
+id: policy_refund_timing
+title: 'Policy: refund timing'
+persona: maya
+turns:
+- user: When will a refund show up on my card?
+expect:
+  tools_called_any:
+  - search_policy
+  citations_any:
+  - §3.1
+  reply_contains_any:
+  - '5'
+  - business days
+  tools_forbidden:
+  - issue_refund

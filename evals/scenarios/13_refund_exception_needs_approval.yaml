@@ -1,0 +1,14 @@
+id: refund_exception_needs_approval
+title: Exception request goes to a human
+persona: maya
+turns:
+- user: 'The rain jacket from order #1031 is unopened. I know it''s past the window,
+    but can you make an exception and refund it?'
+expect:
+  tools_called_any:
+  - issue_refund
+  approval_created: true
+  approval_rules_any:
+  - R-EXCEPTION
+  final_state:
+    refund_status: pending_approval

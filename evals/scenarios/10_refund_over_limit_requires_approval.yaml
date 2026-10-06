@@ -1,0 +1,22 @@
+id: refund_over_limit_requires_approval
+title: Refund over $50 needs a human
+persona: maya
+turns:
+- user: I want to return the trail boots from my last order and get a refund. They're
+    unopened.
+expect:
+  tools_called_in_order:
+  - get_order
+  - check_return_eligibility
+  - issue_refund
+  tools_forbidden:
+  - create_ticket
+  approval_created: true
+  approval_rules_any:
+  - R-AMOUNT-LIMIT
+  final_state:
+    refund_status: pending_approval
+  reply_contains_any:
+  - team member
+  - approval
+  - review

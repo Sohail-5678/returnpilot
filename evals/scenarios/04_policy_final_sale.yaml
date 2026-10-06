@@ -1,0 +1,14 @@
+id: policy_final_sale
+title: 'Policy: final sale items'
+persona: arjun
+turns:
+- user: Can I return final sale items?
+expect:
+  tools_called_any:
+  - search_policy
+  citations_any:
+  - §6.1
+  - §6.2
+  tools_forbidden:
+  - issue_refund
+  - create_return

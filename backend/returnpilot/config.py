@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     gemini_embed_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBED_MODEL")
     embed_dim: int = Field(default=768, alias="EMBED_DIM")
     fake_llm: bool = Field(default=False, alias="FAKE_LLM")
+    fake_llm_fail_primary: bool = Field(default=False, alias="FAKE_LLM_FAIL_PRIMARY")  # evals: provider outage
     llm_timeout_s: float = Field(default=20.0, alias="LLM_TIMEOUT_S")
 
     # Free-tier daily request caps (quota guard skips a provider at 90%)

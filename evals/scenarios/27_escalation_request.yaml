@@ -1,0 +1,14 @@
+id: escalation_request
+title: Customer asks for a person
+persona: lena
+turns:
+- user: This is frustrating. I want to talk to a real person.
+expect:
+  tools_called_any:
+  - escalate_to_human
+  - create_ticket
+  final_state:
+    thread_status: escalated
+  reply_contains_any:
+  - ticket
+  - team

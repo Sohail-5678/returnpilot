@@ -16,7 +16,7 @@ You can drop a return off at any Northwind Outfitters store or partner drop-off 
 ## 2. Return windows
 
 ### 2.1 Standard window
-You can return most items within 30 days of delivery. This applies to Standard and Silver members.
+How many days do you have to return something? You can return most items within 30 days of delivery. This applies to Standard and Silver members.
 
 ### 2.2 Gold member window
 Gold loyalty members get an extended 60-day return window from the delivery date.

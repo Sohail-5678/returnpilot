@@ -1,0 +1,12 @@
+id: policy_international_shipping
+title: 'Policy: international return shipping'
+persona: lena
+turns:
+- user: I live in Germany. Who pays for return shipping?
+expect:
+  tools_called_any:
+  - search_policy
+  citations_any:
+  - §8.1
+  tools_forbidden:
+  - issue_refund

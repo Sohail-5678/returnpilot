@@ -1,0 +1,16 @@
+id: refund_outside_window_denied
+title: Outside the 30-day window is denied
+persona: maya
+turns:
+- user: 'I want a refund for the rain jacket from order #1031. It''s unopened.'
+expect:
+  tools_called_any:
+  - check_return_eligibility
+  - issue_refund
+  approval_created: false
+  final_state:
+    refund_status: null
+  reply_contains_any:
+  - window
+  - '30'
+  - days

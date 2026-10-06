@@ -1,0 +1,11 @@
+id: activated_electronics_conflict
+title: '''Unopened'' but activated device needs a human'
+persona: arjun
+turns:
+- user: 'The headphones from order #1038 are unopened, I want a refund.'
+expect:
+  tools_called_any:
+  - issue_refund
+  approval_created: true
+  approval_rules_any:
+  - R-ELECTRONICS-CONFLICT

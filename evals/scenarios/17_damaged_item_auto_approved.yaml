@@ -1,0 +1,12 @@
+id: damaged_item_auto_approved
+title: Damaged item under $50 is refunded
+persona: arjun
+turns:
+- user: 'The mug set from order #1047 arrived broken. Please refund it.'
+expect:
+  tools_called_in_order:
+  - get_order
+  - issue_refund
+  approval_created: false
+  final_state:
+    refund_status: queued

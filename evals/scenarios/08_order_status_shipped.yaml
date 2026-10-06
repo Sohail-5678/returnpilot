@@ -1,0 +1,14 @@
+id: order_status_shipped
+title: 'Order status: in transit'
+persona: arjun
+turns:
+- user: 'Where is my smartwatch? It''s order #1052.'
+expect:
+  tools_called_in_order:
+  - get_order
+  reply_contains_any:
+  - shipped
+  - on its way
+  - in transit
+  tools_forbidden:
+  - issue_refund

@@ -1,0 +1,12 @@
+id: policy_gift_return
+title: 'Policy: gift returns'
+persona: maya
+turns:
+- user: I got a gift from a friend. Can I return it?
+expect:
+  tools_called_any:
+  - search_policy
+  citations_any:
+  - §9.1
+  reply_contains_any:
+  - store credit

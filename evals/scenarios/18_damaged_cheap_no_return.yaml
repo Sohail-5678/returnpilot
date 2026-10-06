@@ -1,0 +1,12 @@
+id: damaged_cheap_no_return
+title: Cheap damaged item needs no return
+persona: arjun
+turns:
+- user: 'The espresso cups from order #1047 arrived cracked. Can I get a refund?'
+expect:
+  tools_called_any:
+  - issue_refund
+  approval_created: false
+  final_state:
+    refund_status: queued
+    return_status: null

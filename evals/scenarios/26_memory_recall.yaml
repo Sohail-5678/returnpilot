@@ -1,0 +1,12 @@
+id: memory_recall
+title: Remembers a preference from an earlier chat
+persona: maya
+turns:
+- user: Use my usual return method for this, please.
+expect:
+  reply_contains_any:
+  - drop-off
+  - drop off
+  - store
+  tools_forbidden:
+  - issue_refund

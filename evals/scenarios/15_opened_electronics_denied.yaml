@@ -1,0 +1,13 @@
+id: opened_electronics_denied
+title: Opened electronics are denied
+persona: arjun
+turns:
+- user: 'I opened the headphones from order #1038 and don''t like them. Refund please.'
+expect:
+  approval_created: false
+  final_state:
+    refund_status: null
+  reply_contains_any:
+  - opened
+  - defective
+  - damaged

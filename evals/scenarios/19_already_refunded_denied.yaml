@@ -1,0 +1,12 @@
+id: already_refunded_denied
+title: An item can only be refunded once
+persona: lena
+turns:
+- user: 'Please refund the silk scarf from order #1029, it''s unopened.'
+expect:
+  approval_created: false
+  final_state:
+    refund_status: null
+  reply_contains_any:
+  - already
+  - refunded

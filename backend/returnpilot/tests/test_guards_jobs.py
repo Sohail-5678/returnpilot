@@ -54,6 +54,9 @@ def test_output_guard_blocks_other_emails_and_false_promises() -> None:
     assert not out("I emailed arjun.mehta@example.com about it.").ok  # type: ignore[attr-defined]
     assert not out("I've issued your refund of $129.00.").ok  # type: ignore[attr-defined]
     assert out("I've issued your refund of $129.00.", action_executed=True).ok  # type: ignore[attr-defined]
+    assert not out("Your refund has been approved.").ok  # type: ignore[attr-defined]
+    # quoting policy is not a claim about this customer's refund
+    assert out("Once a refund is issued it usually appears within 5-10 business days.").ok  # type: ignore[attr-defined]
 
 
 def test_input_guard_masks_cards_and_flags_injection() -> None:

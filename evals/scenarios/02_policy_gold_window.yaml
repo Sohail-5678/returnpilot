@@ -1,0 +1,13 @@
+id: policy_gold_window
+title: 'Policy: gold member window'
+persona: arjun
+turns:
+- user: I'm a gold member. How long is my return window?
+expect:
+  tools_called_any:
+  - search_policy
+  citations_any:
+  - §2.2
+  reply_contains_any:
+  - '60'
+  approval_created: false

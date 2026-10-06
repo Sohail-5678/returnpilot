@@ -1,0 +1,12 @@
+id: quota_fallback
+title: Primary LLM down → fallback provider answers
+persona: maya
+turns:
+- user: How many days do I have to return something?
+expect:
+  tools_called_any:
+  - search_policy
+  fallback_used: true
+  citations_any:
+  - §2.1
+simulate_primary_down: true

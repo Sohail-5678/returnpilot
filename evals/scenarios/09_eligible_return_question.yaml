@@ -1,0 +1,19 @@
+id: eligible_return_question
+title: 'Demo step 1: can I return the boots?'
+persona: maya
+turns:
+- user: Can I return the boots from my last order? They're unopened.
+expect:
+  tools_called_in_order:
+  - get_order
+  - check_return_eligibility
+  tools_forbidden:
+  - issue_refund
+  approval_created: false
+  reply_contains_any:
+  - '30'
+  - eligible
+  - can be returned
+  - within
+  final_state:
+    refund_status: null

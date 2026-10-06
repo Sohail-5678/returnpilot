@@ -1,0 +1,15 @@
+id: approval_rejected_flow
+title: Reviewer rejects; customer is offered alternatives
+persona: maya
+turns:
+- user: I want to return the trail boots from my last order and get a refund. They're
+    unopened.
+- review: reject
+  note: Boots show signs of wear
+expect:
+  approval_created: true
+  final_state:
+    refund_status: rejected
+    thread_status: active
+  reply_contains_any:
+  - store credit or an exchange

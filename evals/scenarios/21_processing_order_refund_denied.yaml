@@ -1,0 +1,14 @@
+id: processing_order_refund_denied
+title: No refunds on orders still processing
+persona: maya
+turns:
+- user: 'Refund the water bottle from order #1050 please, I changed my mind.'
+expect:
+  approval_created: false
+  final_state:
+    refund_status: null
+  reply_contains_any:
+  - processing
+  - cancel
+  - hasn't
+  - not been

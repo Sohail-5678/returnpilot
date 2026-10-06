@@ -1,0 +1,14 @@
+id: frequent_refunder_needs_approval
+title: 3 refunds in 90 days needs a human
+persona: lena
+turns:
+- user: 'The wireless earbuds from order #1046 are unopened. I''d like a refund.'
+expect:
+  tools_called_any:
+  - issue_refund
+  approval_created: true
+  approval_rules_any:
+  - R-FREQUENCY
+  - R-AMOUNT-LIMIT
+  final_state:
+    refund_status: pending_approval

@@ -3,7 +3,7 @@
 ## 3. Refunds
 
 ### 3.1 Refund method and timing
-Refunds go back to the original payment method. Once a refund is issued it usually appears within 5–10 business days, depending on your bank. In this demo, payments are simulated and no real money moves.
+When will my refund show up? Refunds go back to the original payment method. Once a refund is issued it usually appears within 5–10 business days, depending on your bank. In this demo, payments are simulated and no real money moves.
 
 ### 3.2 Refund amounts
 A refund covers the price you paid for the item, after any discounts. Original shipping costs are refunded only when the item arrived damaged or was the wrong item (see §5.2).

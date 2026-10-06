@@ -41,9 +41,11 @@ _TEXT_DATE = re.compile(
     rf"\b({_MONTH_RE})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?\b|\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH_RE})\b",
     re.IGNORECASE,
 )
+# Claims that something already happened *for this customer* ("I've issued", "your refund has been
+# approved"). General policy statements ("once a refund is issued…") are fine.
 _DONE_CLAIM = re.compile(
     r"\b(?:i(?:'ve| have)|we(?:'ve| have))\s+(?:already\s+)?(?:issued|processed|approved|refunded|sent)\b"
-    r"|\brefund (?:has been|was|is now|is) (?:issued|approved|processed|on its way|complete)",
+    r"|\byour (?:refund|return) (?:has been|was|is now) (?:issued|approved|processed|sent|completed)",
     re.IGNORECASE,
 )
 

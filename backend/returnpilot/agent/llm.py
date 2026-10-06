@@ -56,7 +56,10 @@ class LLMResult:
 def provider_chain(task: Task) -> list[ProviderSpec]:
     s = get_settings()
     if s.fake_llm:
-        return [ProviderSpec("fake", task, f"fake-{task}", 10**9)]
+        chain = [ProviderSpec("fake", task, f"fake-{task}", 10**9)]
+        if s.fake_llm_fail_primary:  # simulate the primary provider being down (fallback eval)
+            chain.insert(0, ProviderSpec("fake-down", task, f"fake-down-{task}", 10**9))
+        return chain
     chain: list[ProviderSpec] = []
     if s.groq_api_key:
         chain.append(
@@ -103,10 +106,10 @@ def build_model(spec: ProviderSpec, temperature: float, max_tokens: int | None =
             timeout=s.llm_timeout_s,
             retries=0,
         )
-    if spec.provider == "fake":
+    if spec.provider in ("fake", "fake-down"):
         from returnpilot.agent.fake_llm import FakeAgentModel
 
-        return FakeAgentModel(task=spec.kind)
+        return FakeAgentModel(task=spec.kind, down=spec.provider == "fake-down")
     raise ValueError(spec.provider)
 
 
@@ -158,7 +161,7 @@ async def invoke(
         raise LLMUnavailable("no LLM provider is configured")
     attempts: list[dict[str, Any]] = []
     for spec in chain:
-        if spec.provider != "fake" and not await quota.reserve(spec.provider, spec.kind, spec.daily_limit):
+        if not spec.provider.startswith("fake") and not await quota.reserve(spec.provider, spec.kind, spec.daily_limit):
             attempts.append({"provider": spec.provider, "model": spec.model, "error": "quota_guard"})
             continue
         model: Any = build_model(spec, temperature, max_tokens)

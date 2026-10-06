@@ -1,0 +1,16 @@
+id: policy_window_standard
+title: 'Policy: standard return window'
+persona: maya
+turns:
+- user: How many days do I have to return something?
+expect:
+  tools_called_any:
+  - search_policy
+  tools_forbidden:
+  - issue_refund
+  - create_return
+  citations_any:
+  - §2.1
+  reply_contains_any:
+  - '30'
+  approval_created: false

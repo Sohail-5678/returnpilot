@@ -46,7 +46,7 @@ REFUND_REQ = re.compile(
     re.I,
 )
 POLICY_Q = re.compile(
-    r"\b(policy|how long|how many days|window|final sale|international|gift|electronics|exchange|ship(ping)? back)\b",
+    r"\b(policy|how long|how many days|when will|show up|who pays|return shipping|window|final sale|international|gift|electronics|exchange|ship(ping)? back)\b",
     re.I,
 )
 ORDER_NO = re.compile(r"#\s?(\d{4})\b|\border\s+(?:number\s+)?(\d{4})\b", re.I)
@@ -90,6 +90,7 @@ def _md(iso: str | None) -> str:
 class FakeAgentModel(BaseChatModel):
     task: str = "main"
     bound: list[str] = []
+    down: bool = False
 
     @property
     def _llm_type(self) -> str:
@@ -105,6 +106,8 @@ class FakeAgentModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
+        if self.down:
+            raise RuntimeError("503 Service Unavailable (simulated provider outage)")
         ai = self._decide(messages)
         chars = sum(len(_text(m)) for m in messages)
         ai.usage_metadata = {
@@ -190,7 +193,8 @@ class FakeAgentModel(BaseChatModel):
                     order_item_id=elig["order_item_id"],
                     amount=amount,
                     reason=reason,
-                    item_condition=_condition(user) if _condition(user) != "unopened" else "unopened",
+                    item_condition=_condition(user),
+                    request_exception="exception" in user.lower(),
                 )
             return self._call(
                 "create_return", order_item_id=elig["order_item_id"], reason="changed_mind", item_condition="unopened"
@@ -263,6 +267,7 @@ class FakeAgentModel(BaseChatModel):
                     amount=amount,
                     reason="damaged_item" if _condition(user) == "damaged" else "return_within_window",
                     item_condition=_condition(user),
+                    request_exception="exception" in user.lower(),
                 )
             rules = data.get("rule_ids", [])
             topic = (
@@ -320,7 +325,8 @@ class FakeAgentModel(BaseChatModel):
                     content="I couldn't find that in our policy. Would you like me to connect you with a team member?"
                 )
             top = sections[0]
-            first = re.split(r"(?<=[.!?])\s", top["text"].strip())[0]
+            statements = [x for x in re.split(r"(?<=[.!?])\s", top["text"].strip()) if not x.endswith("?")]
+            first = " ".join(statements[:2])
             return AIMessage(content=f"{first} [Policy {top['section_id']}]")
         if last.name in ("issue_refund", "create_return"):
             outcome = data.get("outcome") or {}

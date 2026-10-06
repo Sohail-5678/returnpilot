@@ -1,0 +1,13 @@
+id: final_sale_denied
+title: Final-sale item is denied
+persona: arjun
+turns:
+- user: 'I want a refund for the linen shirt from order #1044. It''s unopened.'
+expect:
+  approval_created: false
+  final_state:
+    refund_status: null
+  reply_contains_any:
+  - final sale
+  - final-sale
+  - exchange

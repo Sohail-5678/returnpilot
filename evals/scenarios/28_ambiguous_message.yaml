@@ -1,0 +1,13 @@
+id: ambiguous_message
+title: Ambiguous message gets a clarifying question
+persona: maya
+turns:
+- user: I have a problem with something I bought.
+expect:
+  tools_forbidden:
+  - issue_refund
+  - create_return
+  - create_ticket
+  approval_created: false
+  reply_contains_any:
+  - '?'

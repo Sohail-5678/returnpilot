@@ -1,0 +1,13 @@
+id: refund_small_auto_approved
+title: Refund under $50 auto-approves
+persona: maya
+turns:
+- user: 'The wool socks from order #1042 aren''t for me. They''re unopened, please
+    refund them.'
+expect:
+  tools_called_in_order:
+  - get_order
+  - issue_refund
+  approval_created: false
+  final_state:
+    refund_status: queued

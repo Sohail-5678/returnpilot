@@ -49,15 +49,16 @@ def to_ui_messages(messages: list[BaseMessage], approvals: dict[str, dict[str, A
             meta = m.response_metadata or {}
             approval = None
             kind = meta.get("rp_kind")
-            if kind in APPROVAL_KINDS and meta.get("approval_id"):
+            # One approval card per request: the "sent for approval" message carries it and shows the
+            # live status (pending → approved / rejected with note / expired); outcome messages are text only.
+            if kind == "approval_pending" and meta.get("approval_id"):
                 live = approvals.get(str(meta["approval_id"]), {})
+                status = live.get("status", "pending")
                 approval = {
                     "approval_id": str(meta["approval_id"]),
-                    "status": live.get("status", kind.split("_", 1)[1])
-                    if kind == "approval_pending"
-                    else kind.split("_", 1)[1],
+                    "status": status,
                     "amount": meta.get("amount"),
-                    "note": meta.get("note") or (live.get("note") if kind != "approval_pending" else None),
+                    "note": live.get("note") if status != "pending" else None,
                 }
             out.append(
                 {
