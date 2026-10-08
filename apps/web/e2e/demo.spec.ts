@@ -67,7 +67,7 @@ test("reply feedback and the admin's agent profile panel", async ({ page }) => {
   await page.waitForURL(/\/admin|\/runs/);
   await page.goto("/admin");
   const panel = page.getByRole("region", { name: "Agent profile" });
-  await expect(panel.getByText("returnpilot@1").first()).toBeVisible();
+  await expect(panel.getByText(/returnpilot@\d+/).first()).toBeVisible();
   await expect(panel.getByText("Identical to the bundled default.")).toBeVisible();
   await panel.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "test-results/admin-profile.png", fullPage: false });

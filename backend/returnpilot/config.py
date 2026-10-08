@@ -28,8 +28,9 @@ class Settings(BaseSettings):
 
     # LLM providers (SPEC §8.2, §S.1). Every model id is an env var; providers rename models often.
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")  # AI Studio project "returnpilot"
-    main_model: str = Field(default="gemini-flash-latest", alias="MAIN_MODEL")  # agent with tools
-    gemini_model_lite: str = Field(default="gemini-flash-lite-latest", alias="GEMINI_MODEL_LITE")
+    main_model: str = Field(default="gemini-3-flash-preview", alias="MAIN_MODEL")  # agent with tools
+    gemini_model_lite: str = Field(default="gemini-3.1-flash-lite-preview", alias="GEMINI_MODEL_LITE")
+    gemini_thinking_level: str = Field(default="low", alias="GEMINI_THINKING_LEVEL")  # Gemini 3: low keeps turns ~1 s
     gemini_embed_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBED_MODEL")
     embed_dim: int = Field(default=768, alias="EMBED_DIM")
     groq_api_key: str = Field(default="", alias="GROQ_API_KEY")

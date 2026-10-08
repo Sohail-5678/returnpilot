@@ -20,7 +20,7 @@ def _default() -> dict:  # type: ignore[type-arg]
 
 def test_bundled_default_profile_is_valid() -> None:
     p = prof.default_profile()
-    assert p.label == "returnpilot@1"
+    assert p.label == f"returnpilot@{p.version}" and p.version >= 1
     assert {"get_order", "issue_refund", "search_policy"} <= set(p.tool_descriptions)
     assert p.fast_routes() == {"faq", "order_lookup"}
 
@@ -126,7 +126,7 @@ async def test_trace_v1_and_feedback(maya, admin) -> None:  # type: ignore[no-un
 
     trace = await build_trace([uuid.UUID(run_id)])
     assert trace is not None and trace["contract_version"] == "trace.v1"
-    assert trace["profile_version"] == "returnpilot@1" and trace["mode"] == "live" and trace["status"] == "success"
+    assert trace["profile_version"] == prof.default_profile().label and trace["mode"] == "live" and trace["status"] == "success"
     assert trace["end_state"]["tools_called"][:3] == ["list_orders", "get_order", "check_return_eligibility"]
     assert {s["kind"] for s in trace["spans"]} >= {"node", "llm", "tool", "guard"}
     assert "@example.com" not in json.dumps(trace)
@@ -139,4 +139,4 @@ async def test_trace_v1_and_feedback(maya, admin) -> None:  # type: ignore[no-un
 
 async def test_admin_sees_active_profile(admin) -> None:  # type: ignore[no-untyped-def]
     body = (await admin.get("/v1/admin/profile")).json()
-    assert body["label"] == "returnpilot@1" and body["diff"] == [] and "refund_auto_approve_limit" in body["locked"]
+    assert body["label"] == prof.default_profile().label and body["diff"] == [] and "refund_auto_approve_limit" in body["locked"]

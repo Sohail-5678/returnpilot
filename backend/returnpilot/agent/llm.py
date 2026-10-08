@@ -16,6 +16,7 @@ Model names come from env vars because providers rename models.
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import time
 from dataclasses import dataclass, field
@@ -137,6 +138,7 @@ def build_model(spec: ProviderSpec, temperature: float, max_tokens: int | None =
     if spec.provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
+        extra: dict[str, Any] = {"thinking_level": s.gemini_thinking_level} if "gemini-3" in spec.model else {}
         return ChatGoogleGenerativeAI(  # type: ignore[call-arg]
             model=spec.model,
             api_key=s.gemini_api_key,
@@ -144,6 +146,7 @@ def build_model(spec: ProviderSpec, temperature: float, max_tokens: int | None =
             max_tokens=max_tokens,
             timeout=s.llm_timeout_s,
             retries=0,
+            **extra,
         )
     if spec.provider in ("fake", "fake-down"):
         from returnpilot.agent.fake_llm import FakeAgentModel
@@ -167,10 +170,26 @@ def is_tool_json_error(exc: BaseException) -> bool:
     return "tool_use_failed" in msg or "failed to call a function" in msg or "invalid tool" in msg
 
 
+GEMINI_SIGS = "__gemini_function_call_thought_signatures__"
+# Google's documented placeholder for function calls Gemini didn't produce itself (e.g. a Groq fallback).
+SKIP_SIGNATURE = base64.b64encode(b"skip_thought_signature_validator").decode()
+
+
+def _with_signatures(m: AIMessage) -> AIMessage:
+    sigs = dict(m.additional_kwargs.get(GEMINI_SIGS) or {})
+    missing = [tc["id"] for tc in m.tool_calls if tc.get("id") and tc["id"] not in sigs]
+    if not missing:
+        return m
+    sigs.update({tid: SKIP_SIGNATURE for tid in missing})
+    return m.model_copy(update={"additional_kwargs": {**m.additional_kwargs, GEMINI_SIGS: sigs}})
+
+
 def normalize_for(provider: str, messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Gemini wants a single leading system message and no back-to-back plain AI turns."""
+    """Gemini wants a single leading system message, no back-to-back plain AI turns, and a thought
+    signature on every earlier function call (Gemini 3)."""
     if provider != "gemini":
         return messages
+    messages = [_with_signatures(m) if isinstance(m, AIMessage) and m.tool_calls else m for m in messages]
     system = [m for m in messages if isinstance(m, SystemMessage)]
     rest = [m for m in messages if not isinstance(m, SystemMessage)]
     merged: list[BaseMessage] = []
