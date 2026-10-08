@@ -150,9 +150,8 @@ async def run_case(case: dict[str, Any], key: bytes) -> dict[str, Any]:
     schema = "eval_" + re.sub(r"[^a-z0-9_]", "_", case_id.lower())[:40] + "_" + uuid.uuid4().hex[:6]
     base = os.environ["EVAL_BASE_DATABASE_URL"]
     admin_url = base.replace("postgresql+psycopg://", "postgresql://")
+    ensure_extensions(admin_url)
     with psycopg.connect(admin_url, autocommit=True) as conn:
-        conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        conn.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
         conn.execute(f'CREATE SCHEMA "{schema}"')
     os.environ["DATABASE_URL"] = _with_search_path(base, schema)
     await reset_engines()
@@ -348,6 +347,18 @@ def _read_cases(path: str) -> list[dict[str, Any]]:
     return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def ensure_extensions(url: str) -> None:
+    """pgvector/pgcrypto live in `public`, shared by every case schema. Concurrent workers may race."""
+    import psycopg
+
+    for ext in ("vector", "pgcrypto"):
+        try:
+            with psycopg.connect(url, autocommit=True) as conn:
+                conn.execute(f"CREATE EXTENSION IF NOT EXISTS {ext} SCHEMA public")
+        except psycopg.errors.UniqueViolation:
+            pass  # another worker created it first
+
+
 def assert_throwaway_database() -> None:
     """Per-case schemas only isolate correctly when `public` holds no app tables (a fresh container)."""
     import psycopg
@@ -408,6 +419,9 @@ async def run_all(args: argparse.Namespace, key: bytes) -> int:
 
 def _run_sharded(args: argparse.Namespace) -> int:
     """--concurrency N: N worker processes, each with its own schemas, app instance and MCP port."""
+    base = os.environ.get("EVAL_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
+    if base:
+        ensure_extensions(base.replace("postgresql+psycopg://", "postgresql://"))
     cases = Path(args.cases).read_text(encoding="utf-8").splitlines()
     cases = [c for c in cases if c.strip()]
     tmp = Path(tempfile.mkdtemp(prefix="rp-eval-"))
