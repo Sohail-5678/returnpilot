@@ -37,6 +37,7 @@ await page.goto(`${base}/login`);
 await page.getByText("Continue as Riley").click();
 await page.waitForURL(/\/reviews/);
 const item = page.getByText(/Order #1042 · Trail Runner Boots/).first();
+await item.waitFor({ timeout: 30000 }).catch(() => {});
 if (await item.count()) {
   await item.click();
   await page.getByText("Agent summary").waitFor();
