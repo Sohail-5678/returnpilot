@@ -16,6 +16,7 @@ from returnpilot.agent.history import compact_json, parse_json, text_of, transcr
 from returnpilot.agent.labels import tool_label
 from returnpilot.agent.nodes.common import emit
 from returnpilot.agent.state import AgentState, TurnContext
+from returnpilot.guards.prompt_guard import scan_tool_payload
 
 TOOL_TIMEOUT_S = 10.0
 
@@ -81,6 +82,18 @@ async def _run_one(ctx: TurnContext, call: dict[str, Any], repeated: bool) -> To
         status = "error"
     content = compact_json(content)
     ok = status != "error"
+    blocked: list[dict[str, Any]] = []
+    if ok:
+        payload = parse_json(content)
+        if payload is not None:
+            # Indirect prompt injection arrives through tool results (order notes, policy copies).
+            payload, blocked = await scan_tool_payload(name, payload)
+            if blocked:
+                content = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+                guard = ctx.tracer.add(
+                    "guard", "prompt_guard_tool_result", input={"tool": name}, output={"blocked": blocked}
+                )
+                guard.status = "blocked"
     duration_ms = int((time.perf_counter() - started) * 1000)
     label = tool_label(name, args, done=True, result=content, ok=ok)
     emit(
@@ -133,6 +146,8 @@ async def tools(state: AgentState, runtime: Runtime[TurnContext]) -> dict[str, A
                     }
                 )
     out: dict[str, Any] = {"messages": results, "tool_signatures": seen, "retrieved": retrieved}
+    if any('"_guard"' in text_of(m) for m in results):
+        out["flags"] = {**state.get("flags", {}), "injection_suspected": True, "tool_result_flagged": True}
     if any(repeats):
         out["stop_reason"] = "repeated_tool_call"
     return out

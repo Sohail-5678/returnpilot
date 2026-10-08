@@ -244,6 +244,12 @@ class Run(Base):
     tokens_out: Mapped[int] = mapped_column(Integer, default=0)
     first_user_text: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
+    profile_version: Mapped[str | None] = mapped_column(Text)
+    mode: Mapped[str] = mapped_column(Text, default="live")
+    case_id: Mapped[str | None] = mapped_column(Text)
+    feedback_thumbs: Mapped[int | None] = mapped_column(Integer)
+    feedback_comment: Mapped[str | None] = mapped_column(Text)
+    exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now()
 
 

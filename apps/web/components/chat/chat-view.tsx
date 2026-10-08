@@ -203,7 +203,7 @@ export function ChatView({ initialThreadId }: { initialThreadId: string | null }
                     approval={m.approval}
                     replaced={!!m.flags?.guard_replaced}
                     at={m.created_at}
-                    runId={runByMessage[m.id]}
+                    runId={m.run_id ?? runByMessage[m.id]}
                     onCite={setCite}
                     showAvatar={prev?.role !== "assistant"}
                   />

@@ -1,6 +1,8 @@
 "use client";
 
-import { Activity, BookOpen, ShieldCheck } from "lucide-react";
+import { Activity, BookOpen, ShieldCheck, ThumbsDown, ThumbsUp } from "lucide-react";
+import { useState } from "react";
+import { useFeedback } from "@/lib/api/hooks";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo";
@@ -99,6 +101,7 @@ export function AssistantMessage({
                 <ShieldCheck size={12} aria-hidden /> Adjusted by the safety check
               </span>
             ) : null}
+            {runId ? <Feedback runId={runId} /> : null}
             {runId ? (
               <Link href={`/runs/${runId}`} className="inline-flex min-h-7 items-center gap-1 rounded-full px-2 font-semibold text-accent-ink pointer-coarse:min-h-11 hover:bg-surface">
                 <Activity size={12} aria-hidden /> Trace
@@ -142,5 +145,40 @@ export function TypingIndicator({ label, className }: { label?: string; classNam
         <span className="text-[13.5px] font-medium text-ink-soft">{label || "Thinking…"}</span>
       </div>
     </motion.div>
+  );
+}
+
+/** Thumbs up/down on a reply (SPEC §18.1): stored on the run and sent to AgentForge for evals. */
+function Feedback({ runId }: { runId: string }) {
+  const [given, setGiven] = useState<1 | -1 | null>(null);
+  const feedback = useFeedback(runId);
+  const send = (thumbs: 1 | -1) => {
+    if (given === thumbs) return;
+    setGiven(thumbs);
+    feedback.mutate(thumbs, { onError: () => setGiven(null) });
+  };
+  const btn = (thumbs: 1 | -1, Icon: typeof ThumbsUp, label: string) => (
+    <button
+      type="button"
+      onClick={() => send(thumbs)}
+      aria-pressed={given === thumbs}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "inline-flex size-7 items-center justify-center rounded-full transition-all pointer-coarse:size-11",
+        given === thumbs
+          ? "bg-surface text-accent-ink shadow-inset-sm"
+          : "text-ink-faint hover:-translate-y-px hover:bg-surface hover:text-ink-soft hover:shadow-raised-sm",
+      )}
+    >
+      <Icon size={13} aria-hidden />
+    </button>
+  );
+  return (
+    <span className="inline-flex items-center gap-0.5" role="group" aria-label="Rate this reply">
+      {btn(1, ThumbsUp, "Helpful")}
+      {btn(-1, ThumbsDown, "Not helpful")}
+      {given ? <span className="ml-1 text-[11px] text-ink-faint" aria-live="polite">Thanks!</span> : null}
+    </span>
   );
 }

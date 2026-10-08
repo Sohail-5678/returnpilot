@@ -51,7 +51,8 @@ def _action_event(
 
 def _process_refund(job: Job) -> None:
     p = job.payload
-    time.sleep(random.uniform(1.0, 2.5))  # simulated payment-provider latency
+    if not get_settings().celery_eager:
+        time.sleep(random.uniform(1.0, 2.5))  # simulated payment-provider latency
     with sync_session() as s:
         refund = s.get(Refund, uuid.UUID(p["refund_id"]))
         if refund is None:
@@ -84,7 +85,8 @@ def _process_refund(job: Job) -> None:
 
 def _create_return_label(job: Job) -> None:
     p = job.payload
-    time.sleep(random.uniform(0.5, 1.2))
+    if not get_settings().celery_eager:
+        time.sleep(random.uniform(0.5, 1.2))
     with sync_session() as s:
         ret = s.get(Return, uuid.UUID(p["return_id"]))
         if ret is None:
@@ -177,6 +179,10 @@ def run_job(self: Any, job_id: str) -> None:
 
 
 def enqueue_jobs(job_ids: list[str]) -> None:
+    if get_settings().celery_eager:  # eval adapter: side effects complete within the case
+        for jid in job_ids:
+            run_job.apply(args=[jid])
+        return
     for jid in job_ids:
         try:
             celery_app.send_task("returnpilot.jobs.tasks.run_job", args=[jid], task_id=jid)

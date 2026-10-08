@@ -52,6 +52,9 @@ class Tracer:
     started: float = field(default_factory=time.perf_counter)
     route: str | None = None
     model_primary: str | None = None
+    profile_version: str | None = None
+    mode: str = "live"
+    case_id: str | None = None
     _created: bool = False
 
     def add(self, kind: str, name: str, **kw: Any) -> Step:
@@ -110,6 +113,9 @@ class Tracer:
                         kind=self.kind,
                         status="running",
                         first_user_text=(redact(self.first_user_text) if self.first_user_text else None),
+                        profile_version=self.profile_version,
+                        mode=self.mode,
+                        case_id=self.case_id,
                     )
                 )
             self._created = True
@@ -157,3 +163,8 @@ class Tracer:
                     )
         except Exception:  # noqa: BLE001
             log.exception("could not persist trace for run %s", self.run_id)
+            return
+        if self.mode == "live":
+            from returnpilot.agentforge import exporter
+
+            exporter.submit(self.run_id)  # async export to AgentForge (no-op when not configured)

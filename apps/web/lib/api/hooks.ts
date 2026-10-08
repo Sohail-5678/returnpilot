@@ -10,6 +10,7 @@ import {
   meSchema,
   orderDetailSchema,
   orderListSchema,
+  profileInfoSchema,
   policySchema,
   runDetailSchema,
   runListSchema,
@@ -166,3 +167,13 @@ export const usePolicy = (sectionId: string | null) =>
     enabled: !!sectionId,
     staleTime: 60 * 60 * 1000,
   });
+
+export const useProfileInfo = () =>
+  useQuery({ queryKey: ["profile"], queryFn: () => api("admin/profile", { schema: profileInfoSchema }) });
+
+/** Thumbs up/down on a reply → stored on the run and forwarded to AgentForge (SPEC §18.1). */
+export function useFeedback(runId: string) {
+  return useMutation({
+    mutationFn: (thumbs: 1 | -1) => api(`runs/${encodeURIComponent(runId)}/feedback`, { method: "POST", body: { thumbs } }),
+  });
+}

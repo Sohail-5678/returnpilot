@@ -9,4 +9,4 @@ expect:
   - issue_refund
   approval_created: false
   final_state:
-    refund_status: queued
+    refund_status: issued

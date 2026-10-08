@@ -65,7 +65,8 @@ Calling `/v1/me` also provisions the per-workspace clone of a demo persona if it
  "tools":[ToolCall,…],          // assistant only: tool calls made while producing this message, in order
  "citations":[{"section_id":"§2.1","doc":"returns-window","heading":"Standard window"}],
  "approval": {"approval_id":"…","status":"pending"|"approved"|"rejected"|"expired","amount":129.0,"note":null} | null,
- "flags":{"guard_replaced":false}}
+ "flags":{"guard_replaced":false},
+ "run_id":"…" | null}        // the run that produced this reply: feedback buttons + trace link
 ```
 **ToolCall** `{"id":"call_…","name":"get_order","label":"Looked up order #1042","status":"ok"|"error"|"running","duration_ms":312,"args":{…},"result_preview":"short text"}`
 `label` is a plain-English sentence; the UI shows it on the tool chip; `args`/`result_preview` go behind "details".
@@ -131,6 +132,12 @@ Clients should also refetch `GET /v1/threads/{id}` after any event (source of tr
 - `GET /v1/runs?limit=50` → `{"runs":[{"id","thread_id","status":"ok"|"interrupted"|"error","route","model_primary","total_ms","llm_calls","tool_calls","tokens_in","tokens_out","created_at","first_user_text"}]}`
 - `GET /v1/runs/{id}` → `{"run":{…same…},"steps":[{"seq":1,"kind":"node"|"llm"|"tool"|"guard"|"policy"|"interrupt"|"job","name":"route","model":"llama-3.1-8b-instant"|null,"started_at","duration_ms":210,"tokens_in":312,"tokens_out":9,"status":"ok"|"error"|"interrupted","input":{…},"output":{…},"error":null}]}`
 
+### Feedback (customer, own runs) — SPEC §18.1
+`POST /v1/runs/{run_id}/feedback` body `{"thumbs": 1 | -1, "comment": "…"?}` → `{"run_id","thumbs"}`. Stored on the run and forwarded to AgentForge (`PATCH /v1/traces/{id}/feedback`) when configured.
+
+### Agent profile (admin) — SPEC §18.2
+`GET /v1/admin/profile` → `{"label":"returnpilot@1","source":"bundled|agentforge|agentforge (cached)|bundled (fallback)","default_label":"returnpilot@1","diff":[{"path":"params.temperature","default":0.2,"active":0.4}],"locked":["policy","refund_auto_approve_limit",…],"active":{…profile.v1…},"agentforge":{"url":null,"profile_source":"bundled"}}`
+
 ### Admin (admin)
 `GET /v1/admin/metrics?days=7` →
 ```json
@@ -140,7 +147,10 @@ Clients should also refetch `GET /v1/threads/{id}` after any event (source of tr
  "latency_per_day":[{"day":"…","p50_ms":2900,"p95_ms":7100}],
  "routes":[{"route":"refund","count":40}],
  "approvals":{"approved":12,"rejected":3,"expired":2,"pending":2},
- "quota":[{"provider":"groq","kind":"main","used":120,"limit":1000},{"provider":"groq","kind":"small","used":300,"limit":14400},{"provider":"gemini","kind":"chat","used":4,"limit":250},{"provider":"gemini","kind":"embed","used":80,"limit":1000}],
+ "quota":[{"provider":"gemini","kind":"main","model":"gemini-flash-latest","used":120,"limit":1000,"tokens_used":640000,"token_limit":3000000},
+          {"provider":"groq","kind":"fast","model":"openai/gpt-oss-120b","used":40,"limit":600,"tokens_used":51000,"token_limit":120000},
+          {"provider":"groq","kind":"small","model":"openai/gpt-oss-20b",…},{"provider":"groq","kind":"guard",…,"token_limit":null},
+          {"provider":"gemini","kind":"lite",…},{"provider":"gemini","kind":"embed",…}],
  "evals":{"suite":"live","git_sha":"…","created_at":"…","total":30,"passed":27,"metrics":{"task_success":0.9,"trajectory_match":0.93,"policy_violations":0,"approval_routing":1.0}} | null}
 ```
 

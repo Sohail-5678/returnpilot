@@ -70,6 +70,7 @@ def to_ui_messages(messages: list[BaseMessage], approvals: dict[str, dict[str, A
                     "citations": meta.get("citations", []),
                     "approval": approval,
                     "flags": {"guard_replaced": bool(meta.get("guard_replaced")), "kind": kind},
+                    "run_id": meta.get("run_id"),
                 }
             )
             pending_tools = []

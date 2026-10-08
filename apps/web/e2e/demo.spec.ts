@@ -50,3 +50,25 @@ test("another customer's order stays invisible", async ({ page }) => {
   await box.press("Enter");
   await expect(page.getByText(/couldn't find order #1038/)).toBeVisible();
 });
+
+test("reply feedback and the admin's agent profile panel", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try as Maya" }).click();
+  await page.waitForURL(/\/chat/);
+  await page.getByRole("button", { name: "Can I return the boots from my last order?" }).click();
+  await expect(page.getByText(/Policy §2\.1/).first()).toBeVisible();
+  const helpful = page.getByRole("button", { name: "Helpful" }).first();
+  await helpful.click();
+  await expect(helpful).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Thanks!").first()).toBeVisible();
+
+  await page.goto("/login");
+  await page.getByText("Continue as Avery").click();
+  await page.waitForURL(/\/admin|\/runs/);
+  await page.goto("/admin");
+  const panel = page.getByRole("region", { name: "Agent profile" });
+  await expect(panel.getByText("returnpilot@1").first()).toBeVisible();
+  await expect(panel.getByText("Identical to the bundled default.")).toBeVisible();
+  await panel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/admin-profile.png", fullPage: false });
+});

@@ -87,6 +87,8 @@ export const messageSchema = z.object({
   citations: z.array(citationSchema).optional().default([]),
   approval: messageApprovalSchema.nullable().optional(),
   flags: z.object({ guard_replaced: z.boolean().optional() }).partial().nullable().optional(),
+  /** Run that produced this reply (feedback + trace link). */
+  run_id: z.string().nullable().optional(),
 });
 export type Message = z.infer<typeof messageSchema>;
 
@@ -398,7 +400,15 @@ export const metricsSchema = z.object({
     pending: z.number(),
   }),
   quota: z.array(
-    z.object({ provider: z.string(), kind: z.string(), used: z.number(), limit: z.number() }),
+    z.object({
+      provider: z.string(),
+      kind: z.string(),
+      model: z.string().nullable().optional(),
+      used: z.number(),
+      limit: z.number(),
+      tokens_used: z.number().nullable().optional(),
+      token_limit: z.number().nullable().optional(),
+    }),
   ),
   evals: z
     .object({
@@ -422,3 +432,23 @@ export const policySchema = z.object({
   text: z.string(),
 });
 export type Policy = z.infer<typeof policySchema>;
+
+/** GET /v1/admin/profile — the active agent profile (SPEC §18.2). */
+export const profileInfoSchema = z.object({
+  label: z.string(),
+  source: z.string(),
+  default_label: z.string(),
+  diff: z.array(z.object({ path: z.string(), default: z.unknown(), active: z.unknown() })),
+  locked: z.array(z.string()),
+  active: z.object({
+    version: z.number(),
+    created_by: z.string(),
+    notes: z.string().optional().default(""),
+    routing: z.object({ main_model: z.string(), fast_model: z.string(), use_fast_when: z.string() }),
+    params: z.record(z.string(), z.number()),
+    tool_descriptions: z.record(z.string(), z.string()),
+    few_shots: z.array(z.object({ input: z.string(), output: z.string() })),
+  }),
+  agentforge: z.object({ url: z.string().nullable(), profile_source: z.string() }),
+});
+export type ProfileInfo = z.infer<typeof profileInfoSchema>;

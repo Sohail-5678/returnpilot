@@ -13,11 +13,12 @@ from sqlalchemy import select
 from returnpilot.agent import llm
 from returnpilot.agent.history import last_human_text, text_of
 from returnpilot.agent.nodes.common import ai_message, emit
-from returnpilot.agent.prompts import ROUTER_SYSTEM
 from returnpilot.agent.state import AgentState, TurnContext
+from returnpilot.config import get_settings
 from returnpilot.db.models import Thread
 from returnpilot.db.session import db_session
 from returnpilot.guards.input import check_input
+from returnpilot.guards.prompt_guard import classify
 from returnpilot.memory import store
 
 ROUTES = ("faq", "order_lookup", "return", "refund", "human", "smalltalk")
@@ -65,6 +66,16 @@ async def input_guard(state: AgentState, runtime: Runtime[TurnContext]) -> dict[
     with ctx.tracer.step("guard", "input_guard", input={"chars": len(raw)}) as step:
         verdict = check_input(raw)
         step.output = {"blocked": verdict.blocked, "flags": verdict.flags}
+        if verdict.blocked:
+            step.status = "blocked"
+    if not verdict.blocked:
+        # Prompt Guard 2 (+ heuristics): flagged input continues under a stricter system reminder.
+        with ctx.tracer.step("guard", "prompt_guard", input={"chars": len(verdict.text)}) as step:
+            pg = await classify(verdict.text)
+            step.model = get_settings().guard_model if pg.source == "prompt_guard" else None
+            step.output = {"flagged": pg.flagged, "score": pg.score, "source": pg.source}
+        if pg.flagged:
+            verdict.flags.update({"injection_suspected": True, "guard_score": pg.score, "guard_source": pg.source})
     out: dict[str, Any] = {"flags": {**verdict.flags, "blocked": verdict.blocked}}
     updates: list[Any] = []
     if verdict.text != raw:
@@ -104,7 +115,7 @@ async def route(state: AgentState, runtime: Runtime[TurnContext]) -> dict[str, A
     try:
         res = await llm.invoke(
             "small",
-            [SystemMessage(content=ROUTER_SYSTEM), HumanMessage(content=text[:1000])],
+            [SystemMessage(content=ctx.profile.prompts.router), HumanMessage(content=text[:1000])],
             temperature=0,
             max_tokens=20,
         )

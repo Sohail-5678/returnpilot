@@ -24,7 +24,6 @@ jobs:
         ports: ["6379:6379"]
     env:
       TEST_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot_test
-      EVAL_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot_test
       TEST_REDIS_URL: redis://localhost:6379/15
     steps:
       - uses: actions/checkout@v5
@@ -40,8 +39,15 @@ jobs:
         working-directory: backend
         run: |
           uv run pytest -q --cov=returnpilot.policy.engine --cov=returnpilot.policy.rules --cov-fail-under=100 --cov-report=term-missing:skip-covered
-      - name: Deterministic evals (scripted model, 30 scenarios)
-        run: uv run --project backend python evals/run_evals.py --suite deterministic
+      - name: Eval cases are in sync with evals/scenarios/*.yaml
+        run: uv run --project backend python evals/build_cases.py --check
+      - name: Deterministic evals via the eval adapter (scripted model, 30 case.v1 scenarios)
+        env:
+          EVAL_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot_eval
+          PGPASSWORD: pw
+        run: |
+          psql -h localhost -U postgres -c "CREATE DATABASE returnpilot_eval"
+          uv run --project backend python evals/run_evals.py --suite deterministic --concurrency 2
       - name: Dependency audit
         working-directory: backend
         run: uv export --frozen --no-dev --no-hashes > /tmp/req.txt && uvx pip-audit -r /tmp/req.txt --progress-spinner off || echo "::warning::pip-audit reported issues"
@@ -138,3 +144,23 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  agentforge-gate:
+    name: AgentForge quality gate (PRs)
+    # SPEC §18.6: AgentForge runs the regression + red-team core suites at this commit and posts the
+    # `agentforge/quality` status and one PR comment. Skips until AGENTFORGE_GATE_KEY / AGENTFORGE_URL exist.
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Trigger the gate
+        env:
+          KEY: ${{ secrets.AGENTFORGE_GATE_KEY }}
+          URL: ${{ vars.AGENTFORGE_URL }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$URL" ]; then
+            echo "::notice::AgentForge gate not configured yet (add secret AGENTFORGE_GATE_KEY and variable AGENTFORGE_URL)."; exit 0
+          fi
+          curl -fsS -X POST "$URL/api/v1/gate/pr" \
+            -H "X-AgentForge-Key: $KEY" -H "Content-Type: application/json" \
+            -d '{"repo": "${{ github.repository }}", "sha": "${{ github.event.pull_request.head.sha }}", "pr": ${{ github.event.pull_request.number }}}'

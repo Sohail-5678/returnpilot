@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy import delete, func, select, text, update
 
 from returnpilot.agent import llm
-from returnpilot.agent.prompts import MEMORY_SYSTEM
+from returnpilot.agent.profile import get_active_profile
 from returnpilot.config import get_settings
 from returnpilot.db.models import Memory
 from returnpilot.db.session import db_session
@@ -127,7 +127,12 @@ async def extract_candidates(user_texts: list[str]) -> list[dict[str, str]]:
         return [c for t in user_texts for c in _fake_extract(t)]
     try:
         result = await llm.invoke(
-            "small", [SystemMessage(content=MEMORY_SYSTEM), HumanMessage(content=joined)], temperature=0
+            "small",
+            [
+                SystemMessage(content=(await get_active_profile()).prompts.memory_extractor),
+                HumanMessage(content=joined),
+            ],
+            temperature=0,
         )
         raw = result.message.text
         start, end = raw.find("{"), raw.rfind("}")

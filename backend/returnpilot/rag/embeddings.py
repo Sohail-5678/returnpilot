@@ -94,7 +94,7 @@ async def embed_texts(texts: list[str], task_type: TaskType = "RETRIEVAL_DOCUMEN
         client = genai.Client(api_key=s.gemini_api_key)
         for start in range(0, len(texts), 50):
             batch = texts[start : start + 50]
-            if not await quota.reserve("gemini", "embed", s.daily_limit_gemini_embed):
+            if not await quota.reserve("gemini", "embed", s.daily_budget_embed_requests):
                 raise RuntimeError("gemini embedding quota guard")
             resp = await client.aio.models.embed_content(
                 model=s.gemini_embed_model,

@@ -11,13 +11,17 @@ from langgraph.runtime import Runtime
 from returnpilot.agent import llm
 from returnpilot.agent.history import last_human_text, trim_for_llm
 from returnpilot.agent.nodes.common import ai_message, emit
+from returnpilot.agent.profile import Profile, resolve_model
 from returnpilot.agent.prompts import HANDOFF_COPY, QUOTA_COPY, render_main
 from returnpilot.agent.state import AgentState, TurnContext
 from returnpilot.config import get_settings
 
 
 def system_prompt(state: AgentState, ctx: TurnContext) -> str:
+    profile = ctx.profile
     return render_main(
+        template=profile.prompts.system,
+        few_shots=[(f.input, f.output) for f in profile.few_shots],
         customer_name=ctx.customer_name,
         loyalty_tier=ctx.loyalty_tier,
         country=ctx.country,
@@ -28,13 +32,20 @@ def system_prompt(state: AgentState, ctx: TurnContext) -> str:
     )
 
 
+def task_for(state: AgentState, profile: Profile) -> tuple[llm.Task, str]:
+    """Fast path (Groq) for simple routes, main model (Gemini) for multi-step tool use (SPEC §8.2)."""
+    if state.get("route") in profile.fast_routes():
+        return "fast", resolve_model(profile.routing.fast_model)
+    return "main", resolve_model(profile.routing.main_model)
+
+
 async def agent(state: AgentState, runtime: Runtime[TurnContext]) -> dict[str, Any]:
     ctx = runtime.context
     s = get_settings()
     steps = state.get("step_count", 0)
 
     stop = state.get("stop_reason")
-    if not stop and steps >= s.max_agent_steps:
+    if not stop and steps >= min(s.max_agent_steps, ctx.profile.params.max_steps):
         stop = "step_limit"
     if not stop and state.get("turn_tokens", 0) > s.max_turn_tokens:
         stop = "token_limit"
@@ -46,9 +57,21 @@ async def agent(state: AgentState, runtime: Runtime[TurnContext]) -> dict[str, A
 
     if steps == 0:
         emit("status", {"stage": "thinking", "label": "Thinking…"})
-    messages = [SystemMessage(content=system_prompt(state, ctx)), *trim_for_llm(state["messages"])]
+    params = ctx.profile.params
+    messages = [
+        SystemMessage(content=system_prompt(state, ctx)),
+        *trim_for_llm(state["messages"], params.history_messages),
+    ]
+    task, primary = task_for(state, ctx.profile)
     try:
-        res = await llm.invoke("main", messages, tools=ctx.tools.list(), temperature=0.2, max_tokens=700)
+        res = await llm.invoke(
+            task,
+            messages,
+            tools=ctx.tools.list(),
+            temperature=params.temperature,
+            max_tokens=900,
+            primary_model=primary,
+        )
     except llm.LLMUnavailable as exc:
         msg = ai_message(QUOTA_COPY, rp_kind="quota")
         ctx.tracer.add("llm", "agent", status="error", error=str(exc)[:500])

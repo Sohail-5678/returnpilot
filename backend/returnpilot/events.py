@@ -20,7 +20,7 @@ def channel(thread_id: str) -> str:
 
 
 def publish_sync(thread_id: str | None, event: str, data: dict[str, Any]) -> None:
-    if not thread_id:
+    if not thread_id or get_settings().eval_mode:
         return
     try:
         import redis
@@ -32,7 +32,7 @@ def publish_sync(thread_id: str | None, event: str, data: dict[str, Any]) -> Non
 
 
 async def publish(thread_id: str | None, event: str, data: dict[str, Any]) -> None:
-    if not thread_id:
+    if not thread_id or get_settings().eval_mode:
         return
     try:
         from redis import asyncio as aioredis

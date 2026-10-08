@@ -6,7 +6,7 @@
 | Policy violations | 0 | 0 |
 | Approval routing | 100% | 100% |
 | Trajectory match | 100% | ≥ 90% |
-| Turn latency p50 / p95 | 88 ms / 158 ms | — |
+| List-price cost of the run | $0.0000 | — |
 
 | Scenario | Result | Tools |
 |---|---|---|

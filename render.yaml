@@ -14,10 +14,36 @@ services:
     envVars:
       - key: DATABASE_URL        # Neon pooled connection string (…-pooler…/neondb?sslmode=require)
         sync: false
-      - key: GROQ_API_KEY
+      - key: GEMINI_API_KEY      # from the Google AI Studio project named "returnpilot" (main model + embeddings)
         sync: false
-      - key: GEMINI_API_KEY
+      - key: GROQ_API_KEY        # fast path, router, Prompt Guard 2 (limits shared across your Groq org)
         sync: false
+      # Model ids (SPEC §S.1) — verify in the provider consoles; change here without a code change.
+      - key: MAIN_MODEL
+        value: gemini-flash-latest
+      - key: GEMINI_MODEL_LITE
+        value: gemini-flash-lite-latest
+      - key: GEMINI_EMBED_MODEL
+        value: gemini-embedding-001
+      - key: FAST_MODEL
+        value: openai/gpt-oss-120b
+      - key: SMALL_MODEL
+        value: openai/gpt-oss-20b
+      - key: GUARD_MODEL
+        value: meta-llama/llama-prompt-guard-2-86m
+      # ReturnPilot's share of the shared Groq budgets (SPEC §S.1: 120b 60%, 20b 30%).
+      - key: DAILY_BUDGET_FAST_REQUESTS
+        value: "600"
+      - key: DAILY_BUDGET_FAST_TOKENS
+        value: "120000"
+      - key: DAILY_BUDGET_SMALL_REQUESTS
+        value: "300"
+      - key: DAILY_BUDGET_SMALL_TOKENS
+        value: "60000"
+      # Agent profile: "bundled" until AgentForge is live, then set PROFILE_SOURCE=agentforge and add
+      # AGENTFORGE_URL / AGENTFORGE_KEY in the dashboard (traces are exported once both are set).
+      - key: PROFILE_SOURCE
+        value: bundled
       - key: JWT_PUBLIC_KEY      # public half of the web app's ES256 signing key (safe to publish)
         value: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFamRGN1ZSNFRJMzdjL1RkMVkyWjVVd05FaVozQQpTZzVFbHlxTU4xbkp1OXRFcEpocWU3RU8vc3dMcVdRbUdRU0lyU2FRZDdCK3Q3YTBRM2dyTUo1M3BnPT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
       - key: MCP_INTERNAL_TOKEN

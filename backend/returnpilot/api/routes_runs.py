@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, select
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select, update
 
-from returnpilot.api.deps import Principal, require
+from returnpilot.agentforge import forward_feedback
+from returnpilot.api.deps import Principal, customer_only, require
 from returnpilot.api.errors import ApiError
 from returnpilot.db.models import Run, RunStep
 from returnpilot.db.session import db_session
@@ -40,6 +43,8 @@ def _run(r: Run) -> dict[str, Any]:
         "created_at": r.created_at.isoformat(),
         "first_user_text": r.first_user_text,
         "error": r.error,
+        "profile_version": r.profile_version,
+        "feedback": r.feedback_thumbs,
     }
 
 
@@ -81,3 +86,23 @@ async def get_run(run_id: uuid.UUID, p: Principal = Depends(admin_or_customer)) 
             for st in steps
         ],
     }
+
+
+class FeedbackIn(BaseModel):
+    thumbs: Literal[-1, 1]
+    comment: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/runs/{run_id}/feedback")
+async def feedback(run_id: uuid.UUID, body: FeedbackIn, p: Principal = Depends(customer_only)) -> dict[str, Any]:
+    """Thumbs up/down on an assistant reply (SPEC §18.1); forwarded to AgentForge when configured."""
+    async with db_session() as s:
+        res = await s.execute(
+            update(Run)
+            .where(Run.id == run_id, Run.customer_id == p.customer_id)
+            .values(feedback_thumbs=body.thumbs, feedback_comment=body.comment)
+        )
+        if not res.rowcount:  # type: ignore[attr-defined]
+            raise ApiError(404, "not_found", "Run not found.")
+    asyncio.create_task(forward_feedback(run_id, body.thumbs, body.comment))
+    return {"run_id": str(run_id), "thumbs": body.thumbs}

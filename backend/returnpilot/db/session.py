@@ -80,3 +80,15 @@ def sync_session() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+async def reset_engines() -> None:
+    """Dispose pooled connections and forget cached engines (the eval adapter switches schemas per case)."""
+    from returnpilot.config import get_settings
+
+    if async_engine.cache_info().currsize:
+        await async_engine().dispose()
+    if sync_engine.cache_info().currsize:
+        sync_engine().dispose()
+    for cached in (async_engine, sync_engine, _async_factory, _sync_factory, get_settings):
+        cached.cache_clear()

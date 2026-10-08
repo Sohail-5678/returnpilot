@@ -8,6 +8,8 @@ import {
   Gauge,
   GitCommitHorizontal,
   Hourglass,
+  Lock,
+  SlidersHorizontal,
   ShieldCheck,
   Timer,
   Wrench,
@@ -22,8 +24,8 @@ import { GlyphTile, type Tone } from "@/components/ui/glyph-tile";
 import { InkChip, InkPanel } from "@/components/ui/ink-panel";
 import { CountUp, ProgressRing } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMetrics } from "@/lib/api/hooks";
-import type { Metrics } from "@/lib/schemas";
+import { useMetrics, useProfileInfo } from "@/lib/api/hooks";
+import type { Metrics, ProfileInfo } from "@/lib/schemas";
 import { cn, formatDateTime, titleCase } from "@/lib/utils";
 
 const WINDOWS = [7, 14, 30];
@@ -104,6 +106,7 @@ export default function AdminPage() {
                 {m ? <Evals evals={m.evals} /> : <Skeleton className="h-48 rounded-2xl" />}
               </Panel>
             </div>
+            <ProfilePanel />
           </>
         )}
       </div>
@@ -134,7 +137,7 @@ function Kpis({ m }: { m?: Metrics }) {
     { label: "Pending approvals", icon: Hourglass, tone: "amber", value: k?.approvals_pending },
     { label: "Decided", icon: ClipboardCheck, tone: "teal", value: k?.approvals_decided },
     { label: "Policy violations", icon: ShieldCheck, tone: "mint", value: k?.policy_violations, note: k && k.policy_violations === 0 ? "Target: 0 — met" : undefined },
-    { label: "LLM calls today", icon: Gauge, tone: "violet", value: m ? m.quota.reduce((a, q) => a + (q.kind === "embed" ? 0 : q.used), 0) : undefined },
+    { label: "LLM calls today", icon: Gauge, tone: "violet", value: m ? m.quota.reduce((a, q) => a + (q.kind === "embed" || q.kind === "guard" ? 0 : q.used), 0) : undefined },
   ];
   return (
     <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -160,44 +163,163 @@ function Kpis({ m }: { m?: Metrics }) {
   );
 }
 
+const SLOT_LABEL: Record<string, string> = {
+  main: "Agent",
+  fast: "Fast path · fallback",
+  small: "Router · memory",
+  guard: "Prompt Guard",
+  lite: "Fallback (small)",
+  embed: "Embeddings",
+};
+
+function Meter({ used, limit, label }: { used: number; limit: number; label: string }) {
+  const pct = Math.min(100, (used / Math.max(1, limit)) * 100);
+  const hot = pct >= 90;
+  const warm = pct >= 70;
+  return (
+    <div className="relative h-3 rounded-full bg-sunken shadow-inset-sm" role="meter" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used} aria-label={label}>
+      <motion.div
+        className="h-full rounded-full"
+        style={{
+          background: hot
+            ? "linear-gradient(90deg,#FCA5A5,#DC2626)"
+            : warm
+              ? "linear-gradient(90deg,#FCD34D,#F59E0B)"
+              : "linear-gradient(90deg,var(--accent-a),var(--accent-b))",
+        }}
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.max(2, pct)}%` }}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+      />
+      <span aria-hidden className="absolute inset-y-[-3px] left-[90%] w-[2px] rounded-full bg-ink-faint/50" title="Guard threshold (90%)" />
+    </div>
+  );
+}
+
+function compact(n: number) {
+  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 10_000 ? `${Math.round(n / 1000)}K` : n.toLocaleString();
+}
+
 function Quota({ quota }: { quota: Metrics["quota"] }) {
   return (
     <ul className="space-y-4">
       {quota.map((q) => {
-        const pct = Math.min(100, (q.used / Math.max(1, q.limit)) * 100);
-        const hot = pct >= 90;
-        const warm = pct >= 70;
+        const reqPct = (q.used / Math.max(1, q.limit)) * 100;
+        const tokPct = q.token_limit ? ((q.tokens_used ?? 0) / Math.max(1, q.token_limit)) * 100 : 0;
+        const hot = Math.max(reqPct, tokPct) >= 90;
         return (
           <li key={`${q.provider}-${q.kind}`}>
             <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13.5px]">
-              <span className="font-bold text-ink">
-                {titleCase(q.provider)} <span className="font-medium text-ink-faint">· {q.kind}</span>
+              <span className="min-w-0 truncate font-bold text-ink">
+                {SLOT_LABEL[q.kind] ?? titleCase(q.kind)}{" "}
+                <span className="font-medium text-ink-faint">
+                  · {titleCase(q.provider)} {q.model ? <span className="font-mono text-[11.5px]">{q.model.replace(/^.*\//, "")}</span> : null}
+                </span>
               </span>
-              <span className="font-mono text-[12.5px] tabular-nums text-ink-soft">
-                {q.used.toLocaleString()} / {q.limit.toLocaleString()}
+              <span className="shrink-0 font-mono text-[12px] tabular-nums text-ink-soft">
+                {q.used.toLocaleString()} / {q.limit.toLocaleString()} req
               </span>
             </div>
-            <div className="relative h-3.5 rounded-full bg-sunken shadow-inset-sm" role="meter" aria-valuemin={0} aria-valuemax={q.limit} aria-valuenow={q.used} aria-label={`${q.provider} ${q.kind} quota`}>
-              <motion.div
-                className="h-full rounded-full"
-                style={{
-                  background: hot
-                    ? "linear-gradient(90deg,#FCA5A5,#DC2626)"
-                    : warm
-                      ? "linear-gradient(90deg,#FCD34D,#F59E0B)"
-                      : "linear-gradient(90deg,var(--accent-a),var(--accent-b))",
-                }}
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.max(2, pct)}%` }}
-                transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-              />
-              <span aria-hidden className="absolute inset-y-[-3px] left-[90%] w-[2px] rounded-full bg-ink-faint/50" title="Guard threshold (90%)" />
-            </div>
-            <p className="mt-1 text-[11.5px] text-ink-faint">{pct.toFixed(0)}% used{hot ? " · falling back to the next provider" : ""}</p>
+            <Meter used={q.used} limit={q.limit} label={`${q.provider} ${q.kind} requests`} />
+            {q.token_limit ? (
+              <div className="mt-1.5">
+                <Meter used={q.tokens_used ?? 0} limit={q.token_limit} label={`${q.provider} ${q.kind} tokens`} />
+              </div>
+            ) : null}
+            <p className="mt-1 text-[11.5px] text-ink-faint">
+              {reqPct.toFixed(0)}% of requests
+              {q.token_limit ? ` · ${compact(q.tokens_used ?? 0)} / ${compact(q.token_limit)} tokens (${tokPct.toFixed(0)}%)` : ""}
+              {hot ? " · falling back to the next provider" : ""}
+            </p>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** Active agent profile (SPEC §18.2): what AgentForge may tune, and what stays locked. */
+function ProfilePanel() {
+  const { data, isLoading, isError, error, refetch } = useProfileInfo();
+  return (
+    <Panel
+      title="Agent profile"
+      icon={SlidersHorizontal}
+      tone="violet"
+      hint="Prompts, tool descriptions and routing · tuned by AgentForge"
+    >
+      {isError ? (
+        <ErrorState error={error} title="Couldn't load the profile" onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
+        <Skeleton className="h-40 rounded-2xl" />
+      ) : (
+        <ProfileBody p={data} />
+      )}
+    </Panel>
+  );
+}
+
+const PARAM_LABEL: Record<string, string> = {
+  temperature: "Temp",
+  max_steps: "Max steps",
+  history_messages: "History",
+  self_consistency_k: "Samples",
+};
+
+function ProfileBody({ p }: { p: ProfileInfo }) {
+  const params = Object.entries(p.active.params);
+  return (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-surface px-3 py-1 font-mono text-[13px] font-bold text-accent-ink shadow-raised-sm">{p.label}</span>
+          <span className="rounded-full px-3 py-1 text-[12.5px] font-semibold text-ink-soft shadow-inset-sm">source: {p.source}</span>
+          <span className="text-[12.5px] text-ink-faint">by {p.active.created_by}</span>
+        </div>
+        {p.active.notes ? <p className="text-[13.5px] leading-relaxed text-ink-soft">{p.active.notes}</p> : null}
+        <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          {params.map(([k, v]) => (
+            <div key={k} className="rounded-2xl px-3 py-2.5 shadow-inset-sm">
+              <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-faint">{PARAM_LABEL[k] ?? k.replace(/_/g, " ")}</dt>
+              <dd className="mt-0.5 font-mono text-[15px] font-bold text-ink">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-[12.5px] text-ink-soft">
+          Main model <span className="font-mono">{p.active.routing.main_model}</span> · fast model{" "}
+          <span className="font-mono">{p.active.routing.fast_model}</span> when <span className="font-mono">{p.active.routing.use_fast_when}</span>
+        </p>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <h3 className="mb-2 text-[13px] font-bold text-ink">Changes vs default ({p.default_label})</h3>
+          {p.diff.length === 0 ? (
+            <p className="rounded-2xl px-4 py-3 text-[13px] text-ink-soft shadow-inset-sm">Identical to the bundled default.</p>
+          ) : (
+            <ul className="max-h-48 space-y-1.5 overflow-auto pr-1">
+              {p.diff.map((d) => (
+                <li key={d.path} className="rounded-xl px-3 py-2 text-[12.5px] shadow-inset-sm">
+                  <span className="font-mono font-bold text-accent-ink">{d.path}</span>
+                  <span className="block truncate text-ink-faint">
+                    {String(JSON.stringify(d.default) ?? "—").slice(0, 60)} → {String(JSON.stringify(d.active) ?? "—").slice(0, 60)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-ink">
+            <Lock size={13} aria-hidden /> Locked — never in a profile
+          </h3>
+          <ul className="flex flex-wrap gap-1.5">
+            {["policy rules", "refund auto-approve limit", "approval requirements", "tool permissions", "guardrail thresholds"].map((l) => (
+              <li key={l} className="rounded-full bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink-soft shadow-raised-sm">{l}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
   );
 }
 

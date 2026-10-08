@@ -1,42 +1,45 @@
 name: Live evals
 
-# Real Groq/Gemini calls against 30 scenarios. Needs repo secrets GROQ_API_KEY (and optionally
-# GEMINI_API_KEY). ~150 LLM requests per run: well inside the free daily limits.
+# SPEC §13.3: the live tier is normally run by AgentForge through the eval adapter. This manual
+# workflow runs the same 30 case.v1 scenarios against real Gemini/Groq for a quick check.
+# Needs repo secrets GEMINI_API_KEY (and optionally GROQ_API_KEY). ~150 LLM calls per run —
+# Groq limits are shared with DataPilot and AgentForge, so it is manual-only (no nightly schedule).
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 6 * * *"
+    inputs:
+      budget_calls:
+        description: "Stop after this many LLM calls"
+        default: "250"
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'Sohail-5678/returnpilot' }}
     services:
       postgres:
-        image: pgvector/pgvector:pg17
-        env: { POSTGRES_PASSWORD: pw, POSTGRES_DB: returnpilot }
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_PASSWORD: pw, POSTGRES_DB: eval }
         ports: ["5432:5432"]
         options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
     env:
-      EVAL_DATABASE_URL: postgresql://postgres:pw@localhost:5432/returnpilot
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      EVAL_DATABASE_URL: postgresql://postgres:pw@localhost:5432/eval
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      EVAL_TURN_DELAY_S: "3"
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
     steps:
       - uses: actions/checkout@v5
       - name: Skip without keys
-        if: ${{ env.GROQ_API_KEY == '' && env.GEMINI_API_KEY == '' }}
-        run: echo "::notice::Add GROQ_API_KEY as a repository secret to run live evals." && exit 0
+        if: ${{ env.GEMINI_API_KEY == '' && env.GROQ_API_KEY == '' }}
+        run: echo "::notice::Add GEMINI_API_KEY (and GROQ_API_KEY) as repository secrets to run live evals."
       - uses: astral-sh/setup-uv@v7
-        if: ${{ env.GROQ_API_KEY != '' || env.GEMINI_API_KEY != '' }}
-      - name: Run live evals
-        if: ${{ env.GROQ_API_KEY != '' || env.GEMINI_API_KEY != '' }}
+        if: ${{ env.GEMINI_API_KEY != '' || env.GROQ_API_KEY != '' }}
+      - name: Run live evals through the eval adapter
+        if: ${{ env.GEMINI_API_KEY != '' || env.GROQ_API_KEY != '' }}
+        working-directory: backend
         run: |
-          (cd backend && uv sync --frozen)
-          uv run --project backend python evals/run_evals.py --suite live
+          uv sync --frozen
+          mkdir -p ../evals/reports && uv run python ../evals/build_cases.py
+          uv run python -m returnpilot.eval_adapter run --cases ../evals/scenarios.jsonl \
+            --profile profiles/default.json --out ../evals/reports/live.jsonl --check \
+            --budget-calls ${{ inputs.budget_calls }} || true
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: eval-report, path: evals/reports, if-no-files-found: ignore }
+        with: { name: eval-results, path: evals/reports, if-no-files-found: ignore }

@@ -8,6 +8,7 @@ It answers policy questions with citations, looks up orders and checks eligibili
 [![CI](https://github.com/Sohail-5678/returnpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/Sohail-5678/returnpilot/actions/workflows/ci.yml)
 ![cost](https://img.shields.io/badge/hosting%20cost-%240-6b6cf6)
 ![stack](https://img.shields.io/badge/LangGraph%20·%20MCP%20·%20FastAPI%20·%20Celery%20·%20Next.js%2016-23224a)
+![spec](https://img.shields.io/badge/spec-v1.1%20·%20AgentForge--ready-4b4aa3)
 
 ![ReturnPilot landing page](docs/screenshots/landing.jpg)
 
@@ -48,8 +49,10 @@ flowchart LR
     API --> Q[("Redis")]
     W["Celery worker + beat"] --> Q
   end
-  G --> L1["Groq · Llama 3.3 70B / 3.1 8B"]
-  G --> L2["Gemini Flash · embeddings<br/>(fallback)"]
+  G --> L1["Gemini Flash (main agent)<br/>embeddings"]
+  G --> L2["Groq gpt-oss-120b (fast path · fallback)<br/>gpt-oss-20b (router) · Prompt Guard 2"]
+  API -. "trace.v1 · feedback" .-> AF["AgentForge<br/>evals · red-team · optimizer"]
+  AF -. "profile.v1 (prompts, tools, routing)" .-> G
   API & M & W --> DB[("Neon Postgres<br/>+ pgvector")]
 ```
 
@@ -77,7 +80,9 @@ flowchart TD
 - **The model can't reach other customers' data.** `customer_id` comes from the verified JWT and travels to the MCP server in a header. It is not part of any tool schema the model sees.
 - **Idempotent side effects.** Celery jobs are keyed by `sha256(action + item + approval)` with a database unique constraint, so double clicks, retries and redeliveries can't double-refund. A reconcile step re-enqueues jobs after a restart, since Redis in the container is ephemeral.
 - **Guards on both sides.** The input guard masks card numbers, flags prompt-injection patterns and stops abuse. The output guard checks that every amount and date matches a tool result, that citations exist, that no other customer's email appears, and that the reply never claims a refund was issued when it wasn't. A failed check regenerates the reply once, then falls back to a safe answer.
-- **Two free LLM providers + a quota guard.** Groq is primary and Gemini the fallback. Each provider is skipped at 90% of its free daily cap, and the app degrades to a read-only demo instead of failing.
+- **Free models, routed by job, with a token-aware quota guard.** Gemini Flash runs the multi-step agent (largest free daily token budget, its own Google project). Groq `gpt-oss-120b` takes the fast path (FAQ, order lookups) and is the fallback. `gpt-oss-20b` runs the router, memory and summaries. Each model is skipped at 90% of ReturnPilot's share of its daily request *and* token budget (Groq limits are shared with sibling projects), and the app degrades to a read-only demo instead of failing.
+- **Prompt Guard 2 + heuristics on both doors.** The customer's message is classified (flagged input runs under a stricter system reminder), and so is free text coming back from tools. A malicious order note is removed before the model ever sees it, and the trace records a `blocked` guard span.
+- **Prompts are a versioned profile, not hard-coded strings.** The system, router and memory prompts, tool descriptions, few-shot examples, model routing and non-safety parameters live in [`profiles/default.json`](backend/profiles/default.json) (`profile.v1`). In production the active profile can come from AgentForge (cached 5 min, falls back to the last good copy or the bundled default). A profile that touches policy rules, the refund limit, approval requirements, tool permissions or guardrail thresholds is rejected.
 - **Per-visitor sandboxes.** Each browser gets its own copy of the demo personas, with dates re-anchored to today, so the 30-day window still works months from now and visitors never see each other's refunds. Demo reviewers only see their own browser's queue.
 - **Trajectory evals, not just answers.** Scenarios assert which tools were called, in order and which were forbidden, whether an approval was created, the final refund state in the database, and a hard count of policy violations.
 
@@ -92,9 +97,24 @@ flowchart TD
 | Approval routing | **100%** | 100% |
 | Trajectory match | **100%** | ≥ 90% |
 
-The deterministic tier runs on every push. Its scripted model is deliberately *naive*: it really tries to refund $500 when told to, so the tests prove that the policy engine and approval gate, not model manners, stop it. The **live tier** runs the same scenarios against Groq/Gemini via [`evals.yml`](.github/workflows/evals.yml) (manual or nightly; needs a `GROQ_API_KEY` repo secret). Results also show on the admin page.
+Both tiers run through the [eval adapter](backend/returnpilot/eval_adapter.py) on `case.v1` cases generated from the YAML. The deterministic tier runs on every push. Its scripted model is deliberately *naive*: it really tries to refund $500 when told to, so the tests prove that the policy engine and approval gate, not model manners, stop it. The **live tier** is run by AgentForge through the same adapter (or manually via [`evals.yml`](.github/workflows/evals.yml) with a `GEMINI_API_KEY` repo secret). Results also show on the admin page.
 
-Other tests: 105 backend tests (policy engine table tests; integration tests for the auth matrix, customer isolation, approve / edit / reject / expire / deferral flows, injection and job idempotency), 52 web unit tests, and Playwright end-to-end tests of the full demo flow in a real browser.
+Other tests: 124 backend tests (policy engine tables; profile locking, Prompt Guard handling, model routing and `trace.v1`; integration tests for the auth matrix, customer isolation, approve / edit / reject / expire / deferral flows, injection and job idempotency), 52 web unit tests, and Playwright end-to-end tests of the full demo flow in a real browser.
+
+## AgentForge integration (spec §18)
+
+ReturnPilot is a *target agent* for [AgentForge](docs/SPEC.md#18--agentforge-integration), a separate platform that evaluates, red-teams and optimizes agents through shared contracts (`trace.v1`, `profile.v1`, `case.v1`).
+
+- **Traces.** Every finished run becomes a redacted `trace.v1` (spans for nodes, LLM calls, tools and guards, end state, and list-price cost so optimization is measurable at $0). Traces are batched to `POST {AGENTFORGE_URL}/v1/traces` in the background, never blocking a reply. Thumbs up/down under each reply is stored on the run and forwarded.
+- **Profiles.** `PROFILE_SOURCE=agentforge` loads the active profile; the admin page shows its version, source and diff against the default.
+- **Eval adapter.** Each case runs in a fresh schema on a throwaway Postgres (migrations, seed, red-team seed overrides, the persona's turns, automatic reviewer decisions, jobs run eagerly), then the schema is dropped:
+  ```bash
+  cd backend && EVAL_DATABASE_URL=postgresql://…/empty_db \
+    uv run python -m returnpilot.eval_adapter run --cases ../evals/scenarios.jsonl \
+    --profile profiles/default.json --out results.jsonl --fake-llm --check
+  ```
+  Red-team hooks (eval mode only): order notes, ticket text, product names, customer display names and *copies* of policy sections. The real policy is never touched.
+- **PR gate.** On same-repo pull requests, CI asks AgentForge to run its regression and red-team suites and post the `agentforge/quality` status (enabled once `AGENTFORGE_GATE_KEY` is set).
 
 ## Tech stack
 
@@ -102,7 +122,7 @@ Other tests: 105 backend tests (policy engine table tests; integration tests for
 |---|---|
 | Agent | LangGraph 1.2 (Postgres checkpointer, `interrupt()`, runtime context, streaming), LangChain core |
 | Tools | MCP Python SDK (FastMCP, Streamable HTTP) + `langchain-mcp-adapters`; local tools for RAG, memory, escalation |
-| Models | Groq `llama-3.3-70b-versatile` (agent), `llama-3.1-8b-instant` (router, memory, summaries); Gemini Flash fallback; `gemini-embedding-001` (768-d) |
+| Models | Gemini Flash (agent), Groq `openai/gpt-oss-120b` (fast path, fallback), `openai/gpt-oss-20b` (router, memory, summaries), `meta-llama/llama-prompt-guard-2-86m` (injection classifier); `gemini-embedding-001` (768-d). Every id is an env var. |
 | Backend | FastAPI, SQLAlchemy 2.1 + Alembic, psycopg 3, pgvector, Celery 5 + Redis, honcho |
 | Data | Neon Postgres 17 + pgvector: business data, checkpoints, memories (HNSW), policy chunks (hybrid vector + full-text with RRF), traces |
 | Web | Next.js 16 (App Router, `proxy.ts`), React 19, Tailwind 4, Radix, Motion, TanStack Query, Recharts, Auth.js v5 |
@@ -133,11 +153,11 @@ Tests: `cd backend && uv run pytest` · `uv run --project backend python evals/r
 | Vercel Hobby | Next.js web app | No | features pause |
 | Render free web service | Docker backend (512 MB, 0.1 CPU) | No | suspended until next month |
 | Neon free | Postgres + pgvector | No | compute pauses |
-| Groq free API | primary LLM | No | HTTP 429 → Gemini |
-| Google AI Studio | fallback LLM + embeddings | No | HTTP 429 → read-only demo |
+| Google AI Studio (project `returnpilot`) | main LLM + embeddings | No | HTTP 429 → Groq |
+| Groq free API | fast path, router, Prompt Guard 2 | No | HTTP 429 → Gemini / heuristics |
 | GitHub Actions | CI, evals, keep-warm ping | No (public repo) | — |
 
-The backend deploys as a Render Blueprint ([`render.yaml`](render.yaml)): **New → Blueprint → this repo**, then paste `DATABASE_URL`, `GROQ_API_KEY` and `GEMINI_API_KEY`. Everything else is generated or public. The web app signs a 5-minute **ES256** JWT for every backend call; the backend holds only the public key, so a compromised backend can't mint tokens. Verified under the free tier's limits before deploying: about 280 MB of RAM and a ~58 s wake-up at 0.1 CPU.
+The backend deploys as a Render Blueprint ([`render.yaml`](render.yaml)): **New → Blueprint → this repo**, then paste `DATABASE_URL`, `GEMINI_API_KEY` and `GROQ_API_KEY`. Everything else is generated or public. The web app signs a 5-minute **ES256** JWT for every backend call; the backend holds only the public key, so a compromised backend can't mint tokens. Verified under the free tier's limits before deploying: about 280 MB of RAM and a ~58 s wake-up at 0.1 CPU.
 
 ## Known limits
 

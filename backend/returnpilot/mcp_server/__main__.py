@@ -32,6 +32,8 @@ class InternalTokenMiddleware:
 
 
 def build_app() -> Any:
+    # A session manager can only run once, so every (re)start gets a fresh one.
+    mcp._session_manager = None  # noqa: SLF001
     return InternalTokenMiddleware(mcp.streamable_http_app(), get_settings().mcp_internal_token)
 
 

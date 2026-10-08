@@ -26,3 +26,4 @@ playwright-report/
 test-results/
 evals/reports/*.json
 .devdata/
+evals/reports/*.jsonl

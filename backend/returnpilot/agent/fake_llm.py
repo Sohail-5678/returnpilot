@@ -130,14 +130,14 @@ class FakeAgentModel(BaseChatModel):
 
     def _decide(self, messages: list[BaseMessage]) -> AIMessage:
         system = next((_text(m) for m in messages if isinstance(m, SystemMessage)), "")
-        if "Classify the customer's latest message" in system:
+        if "Summarize this support conversation" in system:
+            return AIMessage(content="Customer discussed returns and refunds for recent orders.")
+        if '"memories"' in system:
+            return AIMessage(content=json.dumps({"memories": []}))
+        if self.task == "small" or '"route"' in system:  # router (its prompt lives in the agent profile)
             from returnpilot.agent.nodes.context import keyword_route
 
             return AIMessage(content=json.dumps({"route": keyword_route(_text(messages[-1]))}))
-        if "Summarize this support conversation" in system:
-            return AIMessage(content="Customer discussed returns and refunds for recent orders.")
-        if "extract long-term memories" in system:
-            return AIMessage(content=json.dumps({"memories": []}))
         if "Your previous reply had problems" in system:
             return AIMessage(
                 content="Here's what I found in your order details. Is there anything specific you'd like me to check?"

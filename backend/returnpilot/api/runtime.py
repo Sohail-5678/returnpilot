@@ -17,8 +17,10 @@ from psycopg_pool import AsyncConnectionPool
 
 from returnpilot.agent.graph import build_graph
 from returnpilot.agent.history import text_of
+from returnpilot.agent.profile import get_active_profile
 from returnpilot.agent.state import TurnContext
 from returnpilot.agent.tools_runtime import ToolRuntime
+from returnpilot.agentforge import CURRENT_CASE
 from returnpilot.config import get_settings
 from returnpilot.db.models import Approval, Customer
 from returnpilot.db.session import db_session
@@ -67,6 +69,7 @@ class GraphRuntime:
         self, customer: Customer, thread_id: uuid.UUID, *, kind: str, first_text: str | None, with_tools: bool
     ) -> TurnContext:
         run_id = uuid.uuid4()
+        profile = await get_active_profile()
         tracer = Tracer(
             run_id=run_id,
             thread_id=thread_id,
@@ -74,8 +77,15 @@ class GraphRuntime:
             workspace_id=customer.workspace_id,
             kind=kind,
             first_user_text=first_text,
+            profile_version=profile.label,
+            mode="eval" if get_settings().eval_mode else "live",
+            case_id=CURRENT_CASE["id"],
         )
-        tools = await ToolRuntime.create(customer.id, thread_id) if with_tools else ToolRuntime(customer.id, thread_id)
+        tools = (
+            await ToolRuntime.create(customer.id, thread_id, profile.tool_descriptions)
+            if with_tools
+            else ToolRuntime(customer.id, thread_id)
+        )
         return TurnContext(
             customer_id=customer.id,
             customer_name=customer.name,
@@ -88,6 +98,7 @@ class GraphRuntime:
             tracer=tracer,
             tools=tools,
             resumed=kind != "turn",
+            profile=profile,
         )
 
     async def state(self, thread_id: uuid.UUID) -> Any:

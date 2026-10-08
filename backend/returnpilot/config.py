@@ -26,24 +26,46 @@ class Settings(BaseSettings):
     jwt_audience: str = Field(default="returnpilot-api", alias="JWT_AUDIENCE")
     allowed_origins: str = Field(default="http://localhost:3000", alias="ALLOWED_ORIGINS")
 
-    # LLM providers
-    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
-    groq_model_main: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL_MAIN")
-    groq_model_small: str = Field(default="llama-3.1-8b-instant", alias="GROQ_MODEL_SMALL")
-    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model_fallback: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL_FALLBACK")
-    gemini_model_fallback_small: str = Field(default="gemini-flash-lite-latest", alias="GEMINI_MODEL_FALLBACK_SMALL")
+    # LLM providers (SPEC §8.2, §S.1). Every model id is an env var; providers rename models often.
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")  # AI Studio project "returnpilot"
+    main_model: str = Field(default="gemini-flash-latest", alias="MAIN_MODEL")  # agent with tools
+    gemini_model_lite: str = Field(default="gemini-flash-lite-latest", alias="GEMINI_MODEL_LITE")
     gemini_embed_model: str = Field(default="gemini-embedding-001", alias="GEMINI_EMBED_MODEL")
     embed_dim: int = Field(default=768, alias="EMBED_DIM")
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    fast_model: str = Field(default="openai/gpt-oss-120b", alias="FAST_MODEL")  # fast path + fallback
+    small_model: str = Field(default="openai/gpt-oss-20b", alias="SMALL_MODEL")  # router, memory, summaries
+    guard_model: str = Field(default="meta-llama/llama-prompt-guard-2-86m", alias="GUARD_MODEL")
+    groq_reasoning_effort: str = Field(default="low", alias="GROQ_REASONING_EFFORT")
     fake_llm: bool = Field(default=False, alias="FAKE_LLM")
     fake_llm_fail_primary: bool = Field(default=False, alias="FAKE_LLM_FAIL_PRIMARY")  # evals: provider outage
     llm_timeout_s: float = Field(default=20.0, alias="LLM_TIMEOUT_S")
 
-    # Free-tier daily request caps (quota guard skips a provider at 90%)
-    daily_limit_groq_main: int = Field(default=1000, alias="DAILY_LIMIT_GROQ_MAIN")
-    daily_limit_groq_small: int = Field(default=14400, alias="DAILY_LIMIT_GROQ_SMALL")
-    daily_limit_gemini: int = Field(default=250, alias="DAILY_LIMIT_GEMINI")
-    daily_limit_gemini_embed: int = Field(default=1000, alias="DAILY_LIMIT_GEMINI_EMBED")
+    # Daily budgets per model (requests and tokens). The quota guard skips a model at 90% of either.
+    # Groq limits are per organization and shared with DataPilot/AgentForge: these are ReturnPilot's
+    # shares from SPEC §S.1 (gpt-oss-120b 60%, gpt-oss-20b 30%). Gemini runs in its own project.
+    daily_budget_main_requests: int = Field(default=1000, alias="DAILY_BUDGET_MAIN_REQUESTS")
+    daily_budget_main_tokens: int = Field(default=3_000_000, alias="DAILY_BUDGET_MAIN_TOKENS")
+    daily_budget_lite_requests: int = Field(default=1000, alias="DAILY_BUDGET_LITE_REQUESTS")
+    daily_budget_lite_tokens: int = Field(default=2_000_000, alias="DAILY_BUDGET_LITE_TOKENS")
+    daily_budget_fast_requests: int = Field(default=600, alias="DAILY_BUDGET_FAST_REQUESTS")
+    daily_budget_fast_tokens: int = Field(default=120_000, alias="DAILY_BUDGET_FAST_TOKENS")
+    daily_budget_small_requests: int = Field(default=300, alias="DAILY_BUDGET_SMALL_REQUESTS")
+    daily_budget_small_tokens: int = Field(default=60_000, alias="DAILY_BUDGET_SMALL_TOKENS")
+    daily_budget_guard_requests: int = Field(default=7200, alias="DAILY_BUDGET_GUARD_REQUESTS")
+    daily_budget_embed_requests: int = Field(default=1000, alias="DAILY_BUDGET_EMBED_REQUESTS")
+
+    # Prompt Guard 2 (a locked guardrail: never part of the agent profile)
+    guard_threshold: float = Field(default=0.5, alias="GUARD_THRESHOLD")
+
+    # AgentForge integration (SPEC §18)
+    agentforge_url: str = Field(default="", alias="AGENTFORGE_URL")
+    agentforge_key: str = Field(default="", alias="AGENTFORGE_KEY")
+    profile_source: str = Field(default="bundled", alias="PROFILE_SOURCE")  # bundled | agentforge
+    eval_mode: bool = Field(default=False, alias="EVAL_MODE")  # enables seed overrides (red-team hooks)
+    celery_eager: bool = Field(default=False, alias="CELERY_TASK_ALWAYS_EAGER")
+    # Published paid list prices (USD per 1M tokens in/out) so cost is measurable even at $0. Verify yearly.
+    price_table_json: str = Field(default="", alias="PRICE_TABLE_JSON")
 
     # Internal services
     mcp_url: str = Field(default="http://127.0.0.1:8765/mcp", alias="MCP_URL")
@@ -92,6 +114,22 @@ class Settings(BaseSettings):
     @property
     def origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def price_table(self) -> dict[str, tuple[float, float]]:
+        table = {
+            "gemini-flash": (0.30, 2.50),
+            "gemini-flash-lite": (0.10, 0.40),
+            "gpt-oss-120b": (0.15, 0.60),
+            "gpt-oss-20b": (0.075, 0.30),
+            "prompt-guard": (0.03, 0.03),
+            "gemini-embedding": (0.15, 0.0),
+        }
+        if self.price_table_json:
+            import json
+
+            table.update({k: (float(v[0]), float(v[1])) for k, v in json.loads(self.price_table_json).items()})
+        return table
 
     @property
     def llm_available(self) -> bool:

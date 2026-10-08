@@ -23,6 +23,7 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY returnpilot ./returnpilot
 COPY data ./data
+COPY profiles ./profiles
 COPY alembic.ini Procfile ./
 RUN uv sync --frozen --no-dev && chown -R app:app /app
 

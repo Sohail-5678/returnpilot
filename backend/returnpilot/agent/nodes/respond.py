@@ -120,11 +120,16 @@ async def output_guard(state: AgentState, runtime: Runtime[TurnContext]) -> dict
         except Exception as exc:  # noqa: BLE001 - fall back to the safe reply
             log.info("regeneration failed: %s", exc)
     cites = citations_in(final_text, sections)
-    meta = {**ai.response_metadata, "citations": cites, "guard": {"ok": verdict.ok, "issues": verdict.issues}}
+    meta = {
+        **ai.response_metadata,
+        "citations": cites,
+        "guard": {"ok": verdict.ok, "issues": verdict.issues},
+        "run_id": str(ctx.run_id),
+    }
     if replaced:
         meta["guard_replaced"] = True
         emit("replace", {"id": ai.id, "text": final_text})
-    emit("message", {"id": ai.id, "text": final_text, "citations": cites})
+    emit("message", {"id": ai.id, "text": final_text, "citations": cites, "run_id": str(ctx.run_id)})
     return {"messages": [AIMessage(content=final_text, id=ai.id, response_metadata=meta)]}
 
 

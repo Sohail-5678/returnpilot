@@ -43,6 +43,8 @@ async def enforce(key: str, limit: int, window_s: int, message: str) -> None:
 
 async def check_message(user_key: str, ip: str | None, thread_id: str) -> None:
     s = get_settings()
+    if s.eval_mode:  # isolated eval runs have no shared users to protect (and may have no Redis)
+        return
     await enforce(f"u:{user_key}", s.rate_user_per_min, 60, "You're sending messages quickly. Please wait a moment.")
     if ip:
         await enforce(f"ip:{ip}", s.rate_ip_per_min, 60, "Too many requests from your network. Please wait a minute.")

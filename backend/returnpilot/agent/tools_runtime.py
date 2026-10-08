@@ -57,7 +57,9 @@ class ToolRuntime:
     mcp_ok: bool = True
 
     @classmethod
-    async def create(cls, customer_id: uuid.UUID, thread_id: uuid.UUID) -> ToolRuntime:
+    async def create(
+        cls, customer_id: uuid.UUID, thread_id: uuid.UUID, descriptions: dict[str, str] | None = None
+    ) -> ToolRuntime:
         rt = cls(customer_id=customer_id, thread_id=thread_id)
         tools: list[BaseTool] = []
         try:
@@ -68,6 +70,9 @@ class ToolRuntime:
             log.error("MCP tools unavailable: %s", exc)
             rt.mcp_ok = False
         tools.extend(build_local_tools(customer_id, thread_id, lambda: rt.transcript))
+        for t in tools:  # tool descriptions are part of the optimizable agent profile
+            if descriptions and descriptions.get(t.name):
+                t.description = descriptions[t.name]
         rt.tools = {t.name: t for t in tools}
         return rt
 

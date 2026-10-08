@@ -138,6 +138,7 @@ export async function handleMock(req: MockRequest): Promise<Response> {
 
     case "admin":
       if (id === "metrics") return json(metrics(ws, Number(req.search.get("days") ?? 7)));
+      if (id === "profile") return json(mockProfile());
       return notFound();
 
     default:
@@ -748,6 +749,11 @@ function finishRun(run: MockRun, decision: string, approved: boolean) {
 /* =============================== Runs =============================== */
 
 function runs(ws: Workspace, req: MockRequest, customer: MockCustomer | null, id?: string) {
+  if (req.method === "POST" && id && req.segments[2] === "feedback") {
+    const body = (req.body ?? {}) as { thumbs?: number };
+    if (body.thumbs !== 1 && body.thumbs !== -1) return err(422, "validation_error", "thumbs must be 1 or -1");
+    return json({ run_id: id, thumbs: body.thumbs });
+  }
   if (req.method !== "GET") return err(405, "method_not_allowed", "Method not allowed");
   const visible = [...ws.runs.values()].filter((r) => req.claims.role === "admin" || (customer && r.customer_id === customer.id));
   if (!id) {
@@ -820,10 +826,11 @@ function metrics(ws: Workspace, days: number) {
       pending: count("pending"),
     },
     quota: [
-      { provider: "groq", kind: "main", used: 412, limit: 1000 },
-      { provider: "groq", kind: "small", used: 1310, limit: 14400 },
-      { provider: "gemini", kind: "chat", used: 23, limit: 250 },
-      { provider: "gemini", kind: "embed", used: 186, limit: 1000 },
+      { provider: "gemini", kind: "main", model: "gemini-flash-latest", used: 212, limit: 1000, tokens_used: 1_180_000, token_limit: 3_000_000 },
+      { provider: "groq", kind: "fast", model: "openai/gpt-oss-120b", used: 141, limit: 600, tokens_used: 61_000, token_limit: 120_000 },
+      { provider: "groq", kind: "small", model: "openai/gpt-oss-20b", used: 188, limit: 300, tokens_used: 22_400, token_limit: 60_000 },
+      { provider: "groq", kind: "guard", model: "meta-llama/llama-prompt-guard-2-86m", used: 403, limit: 7200, tokens_used: null, token_limit: null },
+      { provider: "gemini", kind: "embed", model: "gemini-embedding-001", used: 186, limit: 1000, tokens_used: null, token_limit: null },
     ],
     evals: {
       suite: "live",
@@ -838,4 +845,24 @@ function metrics(ws: Workspace, days: number) {
 
 function fmt(n: number) {
   return `$${n.toFixed(2)}`;
+}
+
+function mockProfile() {
+  return {
+    label: "returnpilot@1",
+    source: "bundled",
+    default_label: "returnpilot@1",
+    diff: [],
+    locked: ["approval_threshold", "guardrails", "policy", "refund_auto_approve_limit", "tool_permissions"],
+    active: {
+      version: 1,
+      created_by: "human",
+      notes: "Initial hand-written profile.",
+      routing: { main_model: "env:MAIN_MODEL", fast_model: "env:FAST_MODEL", use_fast_when: "route in ['faq','order_lookup']" },
+      params: { temperature: 0.2, max_steps: 8, history_messages: 12, self_consistency_k: 1 },
+      tool_descriptions: { get_order: "Get one order with its items…", issue_refund: "Propose a refund…" },
+      few_shots: [{ input: "Can I return my jacket?", output: "Which order is it from, and is it unopened?" }],
+    },
+    agentforge: { url: null, profile_source: "bundled" },
+  };
 }

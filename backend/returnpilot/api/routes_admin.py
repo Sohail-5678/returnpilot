@@ -116,39 +116,30 @@ async def metrics(days: int = Query(default=7, ge=1, le=30), _: Principal = Depe
         },
         "runs_per_day": [{"day": r["day"], "runs": r["runs"], "errors": r["errors"]} for r in per_day],
         "latency_per_day": [
-            {"day": r["day"], "p50_ms": int(r["p50_ms"] or 0), "p95_ms": int(r["p95_ms"] or 0)} for r in per_day
+            {"day": r["day"], "p50_ms": int(r["p50_ms"] or 0), "p95_ms": int(r["p95_ms"] or 0)}
+            for r in per_day
+            if r["runs"]
         ],
         "routes": [{"route": r["route"], "count": r["count"]} for r in routes],
         "approvals": {st: approvals.get(st, 0) for st in ("approved", "rejected", "expired", "pending")},
         "quota": [
             {
-                "provider": "groq",
-                "kind": "main",
-                "model": s_.groq_model_main,
-                "used": usage.get(("groq", "main"), 0),
-                "limit": s_.daily_limit_groq_main,
-            },
-            {
-                "provider": "groq",
-                "kind": "small",
-                "model": s_.groq_model_small,
-                "used": usage.get(("groq", "small"), 0),
-                "limit": s_.daily_limit_groq_small,
-            },
-            {
-                "provider": "gemini",
-                "kind": "chat",
-                "model": s_.gemini_model_fallback,
-                "used": usage.get(("gemini", "chat"), 0),
-                "limit": s_.daily_limit_gemini,
-            },
-            {
-                "provider": "gemini",
-                "kind": "embed",
-                "model": s_.gemini_embed_model,
-                "used": usage.get(("gemini", "embed"), 0),
-                "limit": s_.daily_limit_gemini_embed,
-            },
+                "provider": provider,
+                "kind": slot,
+                "model": model,
+                "used": usage.get((provider, slot), 0),
+                "limit": req_limit,
+                "tokens_used": usage.get((provider, f"{slot}:tokens"), 0) if tok_limit else None,
+                "token_limit": tok_limit,
+            }
+            for provider, slot, model, req_limit, tok_limit in (
+                ("gemini", "main", s_.main_model, s_.daily_budget_main_requests, s_.daily_budget_main_tokens),
+                ("groq", "fast", s_.fast_model, s_.daily_budget_fast_requests, s_.daily_budget_fast_tokens),
+                ("groq", "small", s_.small_model, s_.daily_budget_small_requests, s_.daily_budget_small_tokens),
+                ("groq", "guard", s_.guard_model, s_.daily_budget_guard_requests, None),
+                ("gemini", "lite", s_.gemini_model_lite, s_.daily_budget_lite_requests, s_.daily_budget_lite_tokens),
+                ("gemini", "embed", s_.gemini_embed_model, s_.daily_budget_embed_requests, None),
+            )
         ],
         "evals": evals,
     }
@@ -171,3 +162,21 @@ async def cron(job: str, x_cron_token: str = Header(default="")) -> dict[str, An
 
         return {"requeued": await asyncio.to_thread(reconcile_jobs)}
     raise ApiError(404, "not_found", f"Unknown job '{job}'.")
+
+
+@router.get("/v1/admin/profile")
+async def profile(_: Principal = Depends(admin_only)) -> dict[str, Any]:
+    """Active agent profile, where it came from, and how it differs from the bundled default (SPEC §18.2)."""
+    from returnpilot.agent import profile as prof
+
+    active = await prof.get_active_profile()
+    default = prof.default_profile()
+    return {
+        "active": active.model_dump(),
+        "label": active.label,
+        "source": prof.active_source(),
+        "default_label": default.label,
+        "diff": prof.diff(default, active),
+        "locked": sorted(prof.LOCKED_KEYS),
+        "agentforge": {"url": get_settings().agentforge_url or None, "profile_source": get_settings().profile_source},
+    }

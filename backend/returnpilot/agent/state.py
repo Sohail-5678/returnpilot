@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
+from returnpilot.agent.profile import Profile, default_profile
 from returnpilot.agent.tools_runtime import ToolRuntime
 from returnpilot.tracing import Tracer
 
@@ -55,4 +56,5 @@ class TurnContext:
     tracer: Tracer
     tools: ToolRuntime
     resumed: bool = False
+    profile: Profile = field(default_factory=default_profile)
     extra: dict[str, Any] = field(default_factory=dict)
